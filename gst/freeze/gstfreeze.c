@@ -122,6 +122,12 @@ gst_freeze_class_init (GstFreezeClass * klass)
           "timeout",
           "Timeout before closing stream", 0, G_MAXINT, 1, G_PARAM_READWRITE));
 
+  g_object_class_install_property (object_class,
+      ARG_TIMEOUT,
+      g_param_spec_int ("timeout",
+          "timeout",
+          "Timeout before closing stream", 0, G_MAXINT, 1, G_PARAM_READWRITE));
+
   object_class->dispose = gst_freeze_dispose;
 
 }
