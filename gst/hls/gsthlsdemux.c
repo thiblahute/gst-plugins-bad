@@ -1,9 +1,6 @@
 /* GStreamer
  * Copyright (C) 2010 Marc-Andre Lureau <marcandre.lureau@gmail.com>
  * Copyright (C) 2010 Andoni Morales Alastruey <ylatuya@gmail.com>
- * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
- *  Author: Youness Alaoui <youness.alaoui@collabora.co.uk>, Collabora Ltd.
- *  Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  *
  * Gsthlsdemux.c:
  *
@@ -107,15 +104,17 @@ static gboolean gst_hls_demux_fetcher_sink_event (GstPad * pad,
     GstEvent * event);
 static void gst_hls_demux_loop (GstHLSDemux * demux);
 static void gst_hls_demux_stop (GstHLSDemux * demux);
-static void gst_hls_demux_stop_fetcher_locked (GstHLSDemux * demux,
+static void gst_hls_demux_stop_fetcher (GstHLSDemux * demux,
     gboolean cancelled);
 static void gst_hls_demux_stop_update (GstHLSDemux * demux);
 static gboolean gst_hls_demux_start_update (GstHLSDemux * demux);
 static gboolean gst_hls_demux_cache_fragments (GstHLSDemux * demux);
 static gboolean gst_hls_demux_schedule (GstHLSDemux * demux);
 static gboolean gst_hls_demux_switch_playlist (GstHLSDemux * demux);
-static gboolean gst_hls_demux_get_next_fragment (GstHLSDemux * demux);
-static gboolean gst_hls_demux_update_playlist (GstHLSDemux * demux);
+static gboolean gst_hls_demux_get_next_fragment (GstHLSDemux * demux,
+    gboolean retry);
+static gboolean gst_hls_demux_update_playlist (GstHLSDemux * demux,
+    gboolean retry);
 static void gst_hls_demux_reset (GstHLSDemux * demux, gboolean dispose);
 static gboolean gst_hls_demux_set_location (GstHLSDemux * demux,
     const gchar * uri);
@@ -136,9 +135,11 @@ gst_hls_demux_base_init (gpointer g_class)
 {
   GstElementClass *element_class = GST_ELEMENT_CLASS (g_class);
 
-  gst_element_class_add_static_pad_template (element_class, &srctemplate);
+  gst_element_class_add_pad_template (element_class,
+      gst_static_pad_template_get (&srctemplate));
 
-  gst_element_class_add_static_pad_template (element_class, &sinktemplate);
+  gst_element_class_add_pad_template (element_class,
+      gst_static_pad_template_get (&sinktemplate));
 
   gst_element_class_set_details_simple (element_class,
       "HLS Demuxer",
@@ -159,7 +160,10 @@ gst_hls_demux_dispose (GObject * obj)
   g_cond_free (demux->thread_cond);
   g_mutex_free (demux->thread_lock);
 
-  gst_task_join (demux->task);
+  if (GST_TASK_STATE (demux->task) != GST_TASK_STOPPED) {
+    gst_task_stop (demux->task);
+    gst_task_join (demux->task);
+  }
   gst_object_unref (demux->task);
   g_static_rec_mutex_free (&demux->task_lock);
 
@@ -216,6 +220,13 @@ gst_hls_demux_init (GstHLSDemux * demux, GstHLSDemuxClass * klass)
       GST_DEBUG_FUNCPTR (gst_hls_demux_sink_event));
   gst_element_add_pad (GST_ELEMENT (demux), demux->sinkpad);
 
+  /* demux pad */
+  demux->srcpad = gst_pad_new_from_static_template (&srctemplate, "src");
+  gst_pad_set_query_function (demux->srcpad,
+      GST_DEBUG_FUNCPTR (gst_hls_demux_src_query));
+  gst_pad_set_element_private (demux->srcpad, demux);
+  gst_element_add_pad (GST_ELEMENT (demux), demux->srcpad);
+
   /* fetcher pad */
   demux->fetcherpad =
       gst_pad_new_from_static_template (&fetchertemplate, "sink");
@@ -242,7 +253,6 @@ gst_hls_demux_init (GstHLSDemux * demux, GstHLSDemuxClass * klass)
   demux->fetcher_lock = g_mutex_new ();
   demux->queue = g_queue_new ();
   g_static_rec_mutex_init (&demux->task_lock);
-  /* FIXME: This really should be a pad task instead */
   demux->task = gst_task_create ((GstTaskFunction) gst_hls_demux_loop, demux);
   gst_task_set_lock (demux->task, &demux->task_lock);
 }
@@ -292,7 +302,7 @@ gst_hls_demux_change_state (GstElement * element, GstStateChange transition)
   GstHLSDemux *demux = GST_HLS_DEMUX (element);
 
   switch (transition) {
-    case GST_STATE_CHANGE_READY_TO_PAUSED:
+    case GST_STATE_CHANGE_NULL_TO_READY:
       gst_hls_demux_reset (demux, FALSE);
       break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
@@ -310,129 +320,14 @@ gst_hls_demux_change_state (GstElement * element, GstStateChange transition)
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
 
   switch (transition) {
-    case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
-      gst_hls_demux_stop_update (demux);
-      break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
       demux->cancelled = TRUE;
-      gst_hls_demux_stop (demux);
-      gst_task_join (demux->task);
-      gst_hls_demux_reset (demux, FALSE);
+      g_cond_signal (demux->fetcher_cond);
       break;
     default:
       break;
   }
   return ret;
-}
-
-static gboolean
-gst_hls_demux_src_event (GstPad * pad, GstEvent * event)
-{
-  GstHLSDemux *demux;
-
-  demux = GST_HLS_DEMUX (gst_pad_get_element_private (pad));
-
-  switch (event->type) {
-    case GST_EVENT_SEEK:
-    {
-      gdouble rate;
-      GstFormat format;
-      GstSeekFlags flags;
-      GstSeekType start_type, stop_type;
-      gint64 start, stop;
-      GList *walk;
-      GstClockTime current_pos, target_pos;
-      gint current_sequence;
-      GstM3U8MediaFile *file;
-
-      GST_INFO_OBJECT (demux, "Received GST_EVENT_SEEK");
-
-      if (gst_m3u8_client_is_live (demux->client)) {
-        GST_WARNING_OBJECT (demux, "Received seek event for live stream");
-        return FALSE;
-      }
-
-      gst_event_parse_seek (event, &rate, &format, &flags, &start_type, &start,
-          &stop_type, &stop);
-
-      if (format != GST_FORMAT_TIME)
-        return FALSE;
-
-      GST_DEBUG_OBJECT (demux, "seek event, rate: %f start: %" GST_TIME_FORMAT
-          " stop: %" GST_TIME_FORMAT, rate, GST_TIME_ARGS (start),
-          GST_TIME_ARGS (stop));
-
-      GST_M3U8_CLIENT_LOCK (demux->client);
-      file = GST_M3U8_MEDIA_FILE (demux->client->current->files->data);
-      current_sequence = file->sequence;
-      current_pos = 0;
-      target_pos = (GstClockTime) start;
-      for (walk = demux->client->current->files; walk; walk = walk->next) {
-        file = walk->data;
-
-        current_sequence = file->sequence;
-        if (current_pos <= target_pos
-            && target_pos < current_pos + file->duration) {
-          break;
-        }
-        current_pos += file->duration;
-      }
-      GST_M3U8_CLIENT_UNLOCK (demux->client);
-
-      if (walk == NULL) {
-        GST_WARNING_OBJECT (demux, "Could not find seeked fragment");
-        return FALSE;
-      }
-
-      if (flags & GST_SEEK_FLAG_FLUSH) {
-        GST_DEBUG_OBJECT (demux, "sending flush start");
-        gst_pad_push_event (demux->srcpad, gst_event_new_flush_start ());
-      }
-
-      demux->cancelled = TRUE;
-      gst_task_pause (demux->task);
-      g_mutex_lock (demux->fetcher_lock);
-      gst_hls_demux_stop_fetcher_locked (demux, TRUE);
-      g_mutex_unlock (demux->fetcher_lock);
-      gst_hls_demux_stop_update (demux);
-      gst_task_pause (demux->task);
-
-      /* wait for streaming to finish */
-      g_static_rec_mutex_lock (&demux->task_lock);
-
-      demux->need_cache = TRUE;
-      while (!g_queue_is_empty (demux->queue)) {
-        GstBuffer *buf = g_queue_pop_head (demux->queue);
-        gst_buffer_unref (buf);
-      }
-      g_queue_clear (demux->queue);
-      gst_adapter_clear (demux->download);
-
-      GST_M3U8_CLIENT_LOCK (demux->client);
-      GST_DEBUG_OBJECT (demux, "seeking to sequence %d", current_sequence);
-      demux->client->sequence = current_sequence;
-      gst_m3u8_client_get_current_position (demux->client, &demux->position);
-      demux->position_shift = start - demux->position;
-      demux->need_segment = TRUE;
-      GST_M3U8_CLIENT_UNLOCK (demux->client);
-
-
-      if (flags & GST_SEEK_FLAG_FLUSH) {
-        GST_DEBUG_OBJECT (demux, "sending flush stop");
-        gst_pad_push_event (demux->srcpad, gst_event_new_flush_stop ());
-      }
-
-      demux->cancelled = FALSE;
-      gst_task_start (demux->task);
-      g_static_rec_mutex_unlock (&demux->task_lock);
-
-      return TRUE;
-    }
-    default:
-      break;
-  }
-
-  return gst_pad_event_default (pad, event);
 }
 
 static gboolean
@@ -468,22 +363,20 @@ gst_hls_demux_sink_event (GstPad * pad, GstEvent * event)
       playlist = gst_hls_src_buf_to_utf8_playlist ((gchar *)
           GST_BUFFER_DATA (demux->playlist), GST_BUFFER_SIZE (demux->playlist));
       gst_buffer_unref (demux->playlist);
-      demux->playlist = NULL;
       if (playlist == NULL) {
         GST_WARNING_OBJECT (demux, "Error validating first playlist.");
       } else if (!gst_m3u8_client_update (demux->client, playlist)) {
         /* In most cases, this will happen if we set a wrong url in the
          * source element and we have received the 404 HTML response instead of
          * the playlist */
-        GST_ELEMENT_ERROR (demux, STREAM, DECODE, ("Invalid playlist."),
-            (NULL));
+        GST_ELEMENT_ERROR (demux, STREAM, DECODE, ("Invalid playlist."), NULL);
         return FALSE;
       }
 
       if (!ret && gst_m3u8_client_is_live (demux->client)) {
         GST_ELEMENT_ERROR (demux, RESOURCE, NOT_FOUND,
             ("Failed querying the playlist uri, "
-                "required for live sources."), (NULL));
+                "required for live sources."), NULL);
         return FALSE;
       }
 
@@ -491,10 +384,6 @@ gst_hls_demux_sink_event (GstPad * pad, GstEvent * event)
       gst_event_unref (event);
       return TRUE;
     }
-    case GST_EVENT_NEWSEGMENT:
-      /* Swallow newsegments, we'll push our own */
-      gst_event_unref (event);
-      return TRUE;
     default:
       break;
   }
@@ -515,54 +404,26 @@ gst_hls_demux_src_query (GstPad * pad, GstQuery * query)
 
   switch (query->type) {
     case GST_QUERY_DURATION:{
-      GstClockTime duration = -1;
-      GstFormat fmt;
+      GstClockTime duration;
 
-      gst_query_parse_duration (query, &fmt, NULL);
-      if (fmt == GST_FORMAT_TIME) {
-        duration = gst_m3u8_client_get_duration (hlsdemux->client);
-        if (GST_CLOCK_TIME_IS_VALID (duration) && duration > 0) {
-          gst_query_set_duration (query, GST_FORMAT_TIME, duration);
-          ret = TRUE;
-        }
+      duration = gst_m3u8_client_get_duration (hlsdemux->client);
+      if (duration) {
+        gst_query_set_duration (query, GST_FORMAT_TIME, duration);
+        ret = TRUE;
       }
-      GST_INFO_OBJECT (hlsdemux, "GST_QUERY_DURATION returns %s with duration %"
-          GST_TIME_FORMAT, ret ? "TRUE" : "FALSE", GST_TIME_ARGS (duration));
       break;
     }
     case GST_QUERY_URI:
       if (hlsdemux->client) {
         /* FIXME: Do we answer with the variant playlist, with the current
          * playlist or the the uri of the least downlowaded fragment? */
-        gst_query_set_uri (query, gst_m3u8_client_get_uri (hlsdemux->client));
+        gst_query_set_uri (query, hlsdemux->client->current->uri);
         ret = TRUE;
       }
       break;
-    case GST_QUERY_SEEKING:{
-      GstFormat fmt;
-      gint64 stop = -1;
-
-      gst_query_parse_seeking (query, &fmt, NULL, NULL, NULL);
-      GST_INFO_OBJECT (hlsdemux, "Received GST_QUERY_SEEKING with format %d",
-          fmt);
-      if (fmt == GST_FORMAT_TIME) {
-        GstClockTime duration;
-
-        duration = gst_m3u8_client_get_duration (hlsdemux->client);
-        if (GST_CLOCK_TIME_IS_VALID (duration) && duration > 0)
-          stop = duration;
-
-        gst_query_set_seeking (query, fmt,
-            !gst_m3u8_client_is_live (hlsdemux->client), 0, stop);
-        ret = TRUE;
-        GST_INFO_OBJECT (hlsdemux, "GST_QUERY_SEEKING returning with stop : %"
-            GST_TIME_FORMAT, GST_TIME_ARGS (stop));
-      }
-      break;
-    }
     default:
       /* Don't fordward queries upstream because of the special nature of this
-       * "demuxer", which relies on the upstream element only to be fed with the
+       * "demuxer", which relies on the upstream element only to be feed with the
        * first playlist */
       break;
   }
@@ -579,9 +440,8 @@ gst_hls_demux_fetcher_sink_event (GstPad * pad, GstEvent * event)
     case GST_EVENT_EOS:{
       GST_DEBUG_OBJECT (demux, "Got EOS on the fetcher pad");
       /* signal we have fetched the URI */
-      if (!demux->cancelled) {
-        g_cond_broadcast (demux->fetcher_cond);
-      }
+      if (!demux->cancelled)
+        g_cond_signal (demux->fetcher_cond);
     }
     default:
       break;
@@ -621,6 +481,8 @@ gst_hls_demux_fetcher_chain (GstPad * pad, GstBuffer * buf)
     goto done;
   }
 
+  GST_LOG_OBJECT (demux, "The uri fetcher received a new buffer of size %u",
+      GST_BUFFER_SIZE (buf));
   gst_adapter_push (demux->download, buf);
 
 done:
@@ -630,7 +492,7 @@ done:
 }
 
 static void
-gst_hls_demux_stop_fetcher_locked (GstHLSDemux * demux, gboolean cancelled)
+gst_hls_demux_stop_fetcher (GstHLSDemux * demux, gboolean cancelled)
 {
   GstPad *pad;
 
@@ -656,62 +518,20 @@ gst_hls_demux_stop_fetcher_locked (GstHLSDemux * demux, gboolean cancelled)
   demux->fetcher = NULL;
 
   /* if we stopped it to cancell a download, free the cached buffer */
-  if (cancelled && gst_adapter_available (demux->download)) {
+  if (cancelled && !gst_adapter_available (demux->download)) {
     gst_adapter_clear (demux->download);
+    /* signal the fetcher thread that the download has finished/cancelled */
+    g_cond_signal (demux->fetcher_cond);
   }
-  /* signal the fetcher thread that the download has finished/cancelled */
-  if (cancelled)
-    g_cond_broadcast (demux->fetcher_cond);
 }
 
 static void
 gst_hls_demux_stop (GstHLSDemux * demux)
 {
-  g_mutex_lock (demux->fetcher_lock);
-  gst_hls_demux_stop_fetcher_locked (demux, TRUE);
-  g_mutex_unlock (demux->fetcher_lock);
-  gst_task_stop (demux->task);
-  gst_hls_demux_stop_update (demux);
-}
-
-static void
-switch_pads (GstHLSDemux * demux, GstCaps * newcaps)
-{
-  GstPad *oldpad = demux->srcpad;
-
-  GST_DEBUG ("Switching pads (oldpad:%p)", oldpad);
-
-  /* FIXME: This is a workaround for a bug in playsink.
-   * If we're switching from an audio-only or video-only fragment
-   * to an audio-video segment, the new sink doesn't know about
-   * the current running time and audio/video will go out of sync.
-   *
-   * This should be fixed in playsink by distributing the
-   * current running time to newly created sinks and is
-   * fixed in 0.11 with the new segments.
-   */
-  if (demux->srcpad)
-    gst_pad_push_event (demux->srcpad, gst_event_new_flush_stop ());
-
-  /* First create and activate new pad */
-  demux->srcpad = gst_pad_new_from_static_template (&srctemplate, NULL);
-  gst_pad_set_event_function (demux->srcpad,
-      GST_DEBUG_FUNCPTR (gst_hls_demux_src_event));
-  gst_pad_set_query_function (demux->srcpad,
-      GST_DEBUG_FUNCPTR (gst_hls_demux_src_query));
-  gst_pad_set_element_private (demux->srcpad, demux);
-  gst_pad_set_active (demux->srcpad, TRUE);
-  gst_pad_set_caps (demux->srcpad, newcaps);
-  gst_element_add_pad (GST_ELEMENT (demux), demux->srcpad);
-
-  gst_element_no_more_pads (GST_ELEMENT (demux));
-
-  if (oldpad) {
-    /* Push out EOS */
-    gst_pad_push_event (oldpad, gst_event_new_eos ());
-    gst_pad_set_active (oldpad, FALSE);
-    gst_element_remove_pad (GST_ELEMENT (demux), oldpad);
-  }
+  gst_hls_demux_stop_fetcher (demux, TRUE);
+  if (GST_TASK_STATE (demux->task) != GST_TASK_STOPPED)
+    gst_task_stop (demux->task);
+  g_cond_signal (demux->thread_cond);
 }
 
 static void
@@ -730,43 +550,24 @@ gst_hls_demux_loop (GstHLSDemux * demux)
     if (!gst_hls_demux_cache_fragments (demux))
       goto cache_error;
 
-    /* we can start now the updates thread (only if on playing) */
-    if (GST_STATE (demux) == GST_STATE_PLAYING)
-      gst_hls_demux_start_update (demux);
+    /* we can start now the updates thread */
+    gst_hls_demux_start_update (demux);
     GST_INFO_OBJECT (demux, "First fragments cached successfully");
   }
 
   if (g_queue_is_empty (demux->queue)) {
-    if (demux->end_of_playlist)
+    if (demux->end_of_playlist) {
       goto end_of_playlist;
+    }
+    GST_TASK_WAIT (demux->task);
+  }
 
-    goto pause_task;
+  /* Check again if it's the end of the playlist in case we we reached */
+  if (demux->end_of_playlist) {
+    goto end_of_playlist;
   }
 
   buf = g_queue_pop_head (demux->queue);
-
-  /* Figure out if we need to create/switch pads */
-  if (G_UNLIKELY (!demux->srcpad
-          || GST_BUFFER_CAPS (buf) != GST_PAD_CAPS (demux->srcpad)
-          || demux->need_segment)) {
-    switch_pads (demux, GST_BUFFER_CAPS (buf));
-    demux->need_segment = TRUE;
-  }
-  if (demux->need_segment) {
-    GstClockTime start = demux->position + demux->position_shift;
-    /* And send a newsegment */
-    GST_DEBUG_OBJECT (demux, "Sending new-segment. segment start:%"
-        GST_TIME_FORMAT, GST_TIME_ARGS (start));
-    gst_pad_push_event (demux->srcpad,
-        gst_event_new_new_segment (FALSE, 1.0, GST_FORMAT_TIME,
-            start, GST_CLOCK_TIME_NONE, start));
-    demux->need_segment = FALSE;
-    demux->position_shift = 0;
-  }
-
-  if (GST_CLOCK_TIME_IS_VALID (GST_BUFFER_DURATION (buf)))
-    demux->position += GST_BUFFER_DURATION (buf);
-
   ret = gst_pad_push (demux->srcpad, buf);
   if (ret != GST_FLOW_OK)
     goto error;
@@ -783,26 +584,16 @@ end_of_playlist:
 
 cache_error:
   {
-    gst_task_pause (demux->task);
-    if (!demux->cancelled) {
-      GST_ELEMENT_ERROR (demux, RESOURCE, NOT_FOUND,
-          ("Could not cache the first fragments"), (NULL));
-      gst_hls_demux_stop (demux);
-    }
+    GST_ELEMENT_ERROR (demux, RESOURCE, NOT_FOUND,
+        ("Could not cache the first fragments"), NULL);
+    gst_hls_demux_stop (demux);
     return;
   }
 
 error:
   {
     /* FIXME: handle error */
-    GST_DEBUG_OBJECT (demux, "error, stopping task");
     gst_hls_demux_stop (demux);
-    return;
-  }
-
-pause_task:
-  {
-    gst_task_pause (demux->task);
     return;
   }
 }
@@ -815,11 +606,7 @@ gst_hls_demux_fetcher_bus_handler (GstBus * bus,
 
   if (GST_MESSAGE_TYPE (message) == GST_MESSAGE_ERROR) {
     demux->fetcher_error = TRUE;
-    if (!demux->cancelled) {
-      g_mutex_lock (demux->fetcher_lock);
-      g_cond_broadcast (demux->fetcher_cond);
-      g_mutex_unlock (demux->fetcher_lock);
-    }
+    g_cond_signal (demux->fetcher_cond);
   }
 
   gst_message_unref (message);
@@ -827,7 +614,7 @@ gst_hls_demux_fetcher_bus_handler (GstBus * bus,
 }
 
 static gboolean
-gst_hls_demux_make_fetcher_locked (GstHLSDemux * demux, const gchar * uri)
+gst_hls_demux_make_fetcher (GstHLSDemux * demux, const gchar * uri)
 {
   GstPad *pad;
 
@@ -843,6 +630,7 @@ gst_hls_demux_make_fetcher_locked (GstHLSDemux * demux, const gchar * uri)
   demux->stopping_fetcher = FALSE;
   gst_element_set_bus (GST_ELEMENT (demux->fetcher), demux->fetcher_bus);
 
+  g_object_set (G_OBJECT (demux->fetcher), "location", uri, NULL);
   pad = gst_element_get_static_pad (demux->fetcher, "src");
   if (pad) {
     gst_pad_link (pad, demux->fetcherpad);
@@ -859,7 +647,6 @@ gst_hls_demux_reset (GstHLSDemux * demux, gboolean dispose)
   demux->accumulated_delay = 0;
   demux->end_of_playlist = FALSE;
   demux->cancelled = FALSE;
-  demux->do_typefind = TRUE;
 
   if (demux->input_caps) {
     gst_caps_unref (demux->input_caps);
@@ -873,10 +660,8 @@ gst_hls_demux_reset (GstHLSDemux * demux, gboolean dispose)
 
   gst_adapter_clear (demux->download);
 
-  if (demux->client) {
+  if (demux->client)
     gst_m3u8_client_free (demux->client);
-    demux->client = NULL;
-  }
 
   if (!dispose) {
     demux->client = gst_m3u8_client_new ("");
@@ -887,10 +672,6 @@ gst_hls_demux_reset (GstHLSDemux * demux, gboolean dispose)
     gst_buffer_unref (buf);
   }
   g_queue_clear (demux->queue);
-
-  demux->position = 0;
-  demux->position_shift = 0;
-  demux->need_segment = TRUE;
 }
 
 static gboolean
@@ -913,7 +694,6 @@ gst_hls_demux_update_thread (GstHLSDemux * demux)
    * switch to a different bitrate */
 
   g_mutex_lock (demux->thread_lock);
-  GST_DEBUG_OBJECT (demux, "Started updates thread");
   while (TRUE) {
     /* block until the next scheduled update or the signal to quit this thread */
     if (g_cond_timed_wait (demux->thread_cond, demux->thread_lock,
@@ -923,17 +703,9 @@ gst_hls_demux_update_thread (GstHLSDemux * demux)
 
     /* update the playlist for live sources */
     if (gst_m3u8_client_is_live (demux->client)) {
-      if (!gst_hls_demux_update_playlist (demux)) {
-        demux->client->update_failed_count++;
-        if (demux->client->update_failed_count < DEFAULT_FAILED_COUNT) {
-          GST_WARNING_OBJECT (demux, "Could not update the playlist");
-          gst_hls_demux_schedule (demux);
-          continue;
-        } else {
-          GST_ELEMENT_ERROR (demux, RESOURCE, NOT_FOUND,
-              ("Could not update the playlist"), (NULL));
-          goto quit;
-        }
+      if (!gst_hls_demux_update_playlist (demux, TRUE)) {
+        GST_ERROR_OBJECT (demux, "Could not update the playlist");
+        goto quit;
       }
     }
 
@@ -952,46 +724,20 @@ gst_hls_demux_update_thread (GstHLSDemux * demux)
     }
 
     /* fetch the next fragment */
-    if (g_queue_is_empty (demux->queue)) {
-      if (!gst_hls_demux_get_next_fragment (demux)) {
-        if (!demux->end_of_playlist && !demux->cancelled) {
-          demux->client->update_failed_count++;
-          if (demux->client->update_failed_count < DEFAULT_FAILED_COUNT) {
-            GST_WARNING_OBJECT (demux, "Could not fetch the next fragment");
-            continue;
-          } else {
-            GST_ELEMENT_ERROR (demux, RESOURCE, NOT_FOUND,
-                ("Could not fetch the next fragment"), (NULL));
-            goto quit;
-          }
-        }
-      } else {
-        demux->client->update_failed_count = 0;
-      }
-
-      /* try to switch to another bitrate if needed */
-      gst_hls_demux_switch_playlist (demux);
+    if (!gst_hls_demux_get_next_fragment (demux, TRUE)) {
+      if (!demux->end_of_playlist && !demux->cancelled)
+        GST_ERROR_OBJECT (demux, "Could not fetch the next fragment");
+      goto quit;
     }
+
+    /* try to switch to another bitrate if needed */
+    gst_hls_demux_switch_playlist (demux);
   }
 
 quit:
   {
-    GST_DEBUG_OBJECT (demux, "Stopped updates thread");
-    demux->updates_thread = NULL;
     g_mutex_unlock (demux->thread_lock);
     return TRUE;
-  }
-}
-
-
-static void
-gst_hls_demux_stop_update (GstHLSDemux * demux)
-{
-  GST_DEBUG_OBJECT (demux, "Stopping updates thread");
-  while (demux->updates_thread) {
-    g_mutex_lock (demux->thread_lock);
-    g_cond_signal (demux->thread_cond);
-    g_mutex_unlock (demux->thread_lock);
   }
 }
 
@@ -1001,13 +747,8 @@ gst_hls_demux_start_update (GstHLSDemux * demux)
   GError *error;
 
   /* creates a new thread for the updates */
-  g_mutex_lock (demux->thread_lock);
-  if (demux->updates_thread == NULL) {
-    GST_DEBUG_OBJECT (demux, "Starting updates thread");
-    demux->updates_thread = g_thread_create (
-        (GThreadFunc) gst_hls_demux_update_thread, demux, FALSE, &error);
-  }
-  g_mutex_unlock (demux->thread_lock);
+  demux->updates_thread = g_thread_create (
+      (GThreadFunc) gst_hls_demux_update_thread, demux, TRUE, &error);
   return (error != NULL);
 }
 
@@ -1016,16 +757,23 @@ gst_hls_demux_cache_fragments (GstHLSDemux * demux)
 {
   gint i;
 
+  /* Start parsing the main playlist */
+  gst_m3u8_client_set_current (demux->client, demux->client->main);
+
+  if (gst_m3u8_client_is_live (demux->client)) {
+    if (!gst_hls_demux_update_playlist (demux, FALSE)) {
+      GST_ERROR_OBJECT (demux, "Could not fetch the main playlist %s",
+          demux->client->main->uri);
+      return FALSE;
+    }
+  }
+
   /* If this playlist is a variant playlist, select the first one
    * and update it */
   if (gst_m3u8_client_has_variant_playlist (demux->client)) {
-    GstM3U8 *child = NULL;
-
-    GST_M3U8_CLIENT_LOCK (demux->client);
-    child = demux->client->main->current_variant->data;
-    GST_M3U8_CLIENT_UNLOCK (demux->client);
+    GstM3U8 *child = demux->client->main->lists->data;
     gst_m3u8_client_set_current (demux->client, child);
-    if (!gst_hls_demux_update_playlist (demux)) {
+    if (!gst_hls_demux_update_playlist (demux, FALSE)) {
       GST_ERROR_OBJECT (demux, "Could not fetch the child playlist %s",
           child->uri);
       return FALSE;
@@ -1035,37 +783,16 @@ gst_hls_demux_cache_fragments (GstHLSDemux * demux)
   /* If it's a live source, set the sequence number to the end of the list
    * and substract the 'fragmets_cache' to start from the last fragment*/
   if (gst_m3u8_client_is_live (demux->client)) {
-    GST_M3U8_CLIENT_LOCK (demux->client);
     demux->client->sequence += g_list_length (demux->client->current->files);
     if (demux->client->sequence >= demux->fragments_cache)
       demux->client->sequence -= demux->fragments_cache;
     else
       demux->client->sequence = 0;
-    gst_m3u8_client_get_current_position (demux->client, &demux->position);
-    GST_M3U8_CLIENT_UNLOCK (demux->client);
-  } else {
-    GstClockTime duration = gst_m3u8_client_get_duration (demux->client);
-
-    GST_DEBUG_OBJECT (demux, "Sending duration message : %" GST_TIME_FORMAT,
-        GST_TIME_ARGS (duration));
-    if (duration != GST_CLOCK_TIME_NONE)
-      gst_element_post_message (GST_ELEMENT (demux),
-          gst_message_new_duration (GST_OBJECT (demux),
-              GST_FORMAT_TIME, duration));
   }
 
   /* Cache the first fragments */
-  for (i = 0; i < demux->fragments_cache; i++) {
-    gst_element_post_message (GST_ELEMENT (demux),
-        gst_message_new_buffering (GST_OBJECT (demux),
-            100 * i / demux->fragments_cache));
-    g_get_current_time (&demux->next_update);
-    g_time_val_add (&demux->next_update,
-        gst_m3u8_client_get_target_duration (demux->client)
-        / GST_SECOND * G_USEC_PER_SEC);
-    if (!gst_hls_demux_get_next_fragment (demux)) {
-      if (demux->end_of_playlist)
-        break;
+  for (i = 0; i < demux->fragments_cache - 1; i++) {
+    if (!gst_hls_demux_get_next_fragment (demux, FALSE)) {
       if (!demux->cancelled)
         GST_ERROR_OBJECT (demux, "Error caching the first fragments");
       return FALSE;
@@ -1073,10 +800,7 @@ gst_hls_demux_cache_fragments (GstHLSDemux * demux)
     /* make sure we stop caching fragments if something cancelled it */
     if (demux->cancelled)
       return FALSE;
-    gst_hls_demux_switch_playlist (demux);
   }
-  gst_element_post_message (GST_ELEMENT (demux),
-      gst_message_new_buffering (GST_OBJECT (demux), 100));
 
   g_get_current_time (&demux->next_update);
 
@@ -1092,13 +816,7 @@ gst_hls_demux_fetch_location (GstHLSDemux * demux, const gchar * uri)
 
   g_mutex_lock (demux->fetcher_lock);
 
-  while (demux->fetcher)
-    g_cond_wait (demux->fetcher_cond, demux->fetcher_lock);
-
-  if (demux->cancelled)
-    goto quit;
-
-  if (!gst_hls_demux_make_fetcher_locked (demux, uri)) {
+  if (!gst_hls_demux_make_fetcher (demux, uri)) {
     goto uri_error;
   }
 
@@ -1110,9 +828,9 @@ gst_hls_demux_fetch_location (GstHLSDemux * demux, const gchar * uri)
   GST_DEBUG_OBJECT (demux, "Waiting to fetch the URI");
   g_cond_wait (demux->fetcher_cond, demux->fetcher_lock);
 
-  gst_hls_demux_stop_fetcher_locked (demux, FALSE);
+  gst_hls_demux_stop_fetcher (demux, FALSE);
 
-  if (!demux->fetcher_error && gst_adapter_available (demux->download)) {
+  if (gst_adapter_available (demux->download)) {
     GST_INFO_OBJECT (demux, "URI fetched successfully");
     bret = TRUE;
   }
@@ -1130,15 +848,13 @@ uri_error:
 state_change_error:
   {
     GST_ELEMENT_ERROR (demux, CORE, STATE_CHANGE,
-        ("Error changing state of the fetcher element."), (NULL));
+        ("Error changing state of the fetcher element."), NULL);
     bret = FALSE;
     goto quit;
   }
 
 quit:
   {
-    /* Unlock any other fetcher that might be waiting */
-    g_cond_broadcast (demux->fetcher_cond);
     g_mutex_unlock (demux->fetcher_lock);
     return bret;
   }
@@ -1159,15 +875,15 @@ gst_hls_src_buf_to_utf8_playlist (gchar * data, guint size)
 }
 
 static gboolean
-gst_hls_demux_update_playlist (GstHLSDemux * demux)
+gst_hls_demux_update_playlist (GstHLSDemux * demux, gboolean retry)
 {
   const guint8 *data;
   gchar *playlist;
   guint avail;
-  const gchar *uri = gst_m3u8_client_get_current_uri (demux->client);
 
-  GST_INFO_OBJECT (demux, "Updating the playlist %s", uri);
-  if (!gst_hls_demux_fetch_location (demux, uri))
+  GST_INFO_OBJECT (demux, "Updating the playlist %s",
+      demux->client->current->uri);
+  if (!gst_hls_demux_fetch_location (demux, demux->client->current->uri))
     return FALSE;
 
   avail = gst_adapter_available (demux->download);
@@ -1187,41 +903,28 @@ gst_hls_demux_change_playlist (GstHLSDemux * demux, gboolean is_fast)
 {
   GList *list;
   GstStructure *s;
-  gint new_bandwidth;
 
-  GST_M3U8_CLIENT_LOCK (demux->client);
   if (is_fast)
-    list = g_list_next (demux->client->main->current_variant);
+    list = g_list_next (demux->client->main->lists);
   else
-    list = g_list_previous (demux->client->main->current_variant);
+    list = g_list_previous (demux->client->main->lists);
 
   /* Don't do anything else if the playlist is the same */
-  if (!list || list->data == demux->client->current) {
-    GST_M3U8_CLIENT_UNLOCK (demux->client);
+  if (!list || list->data == demux->client->current)
     return TRUE;
-  }
 
-  demux->client->main->current_variant = list;
-  GST_M3U8_CLIENT_UNLOCK (demux->client);
+  demux->client->main->lists = list;
 
-  gst_m3u8_client_set_current (demux->client, list->data);
-
-  GST_M3U8_CLIENT_LOCK (demux->client);
-  new_bandwidth = demux->client->current->bandwidth;
-  GST_M3U8_CLIENT_UNLOCK (demux->client);
-
-  gst_hls_demux_update_playlist (demux);
+  gst_m3u8_client_set_current (demux->client, demux->client->main->lists->data);
+  gst_hls_demux_update_playlist (demux, TRUE);
   GST_INFO_OBJECT (demux, "Client is %s, switching to bitrate %d",
-      is_fast ? "fast" : "slow", new_bandwidth);
+      is_fast ? "fast" : "slow", demux->client->current->bandwidth);
 
   s = gst_structure_new ("playlist",
-      "uri", G_TYPE_STRING, gst_m3u8_client_get_current_uri (demux->client),
-      "bitrate", G_TYPE_INT, new_bandwidth, NULL);
+      "uri", G_TYPE_STRING, demux->client->current->uri,
+      "bitrate", G_TYPE_INT, demux->client->current->bandwidth, NULL);
   gst_element_post_message (GST_ELEMENT_CAST (demux),
       gst_message_new_element (GST_OBJECT_CAST (demux), s));
-
-  /* Force typefinding since we might have changed media type */
-  demux->do_typefind = TRUE;
 
   return TRUE;
 }
@@ -1247,8 +950,7 @@ gst_hls_demux_schedule (GstHLSDemux * demux)
   /* schedule the next update using the target duration field of the
    * playlist */
   g_time_val_add (&demux->next_update,
-      gst_m3u8_client_get_target_duration (demux->client)
-      / GST_SECOND * G_USEC_PER_SEC * update_factor);
+      demux->client->current->targetduration * update_factor * 1000000);
   GST_DEBUG_OBJECT (demux, "Next update scheduled at %s",
       g_time_val_to_iso8601 (&demux->next_update));
 
@@ -1262,38 +964,25 @@ gst_hls_demux_switch_playlist (GstHLSDemux * demux)
   gint64 diff, limit;
 
   g_get_current_time (&now);
-  GST_M3U8_CLIENT_LOCK (demux->client);
-  if (!demux->client->main->lists) {
-    GST_M3U8_CLIENT_UNLOCK (demux->client);
+  if (!demux->client->main->lists)
     return TRUE;
-  }
-  GST_M3U8_CLIENT_UNLOCK (demux->client);
 
   /* compare the time when the fragment was downloaded with the time when it was
    * scheduled */
   diff = (GST_TIMEVAL_TO_TIME (demux->next_update) - GST_TIMEVAL_TO_TIME (now));
-  limit = gst_m3u8_client_get_target_duration (demux->client)
-      * demux->bitrate_switch_tol;
-
-  GST_DEBUG ("diff:%s%" GST_TIME_FORMAT ", limit:%" GST_TIME_FORMAT,
-      diff < 0 ? "-" : " ", GST_TIME_ARGS (ABS (diff)), GST_TIME_ARGS (limit));
+  limit = demux->client->current->targetduration * GST_SECOND *
+      demux->bitrate_switch_tol;
 
   /* if we are on time switch to a higher bitrate */
   if (diff > limit) {
-    while (diff > limit) {
-      gst_hls_demux_change_playlist (demux, TRUE);
-      diff -= limit;
-    }
-    demux->accumulated_delay = 0;
+    gst_hls_demux_change_playlist (demux, TRUE);
   } else if (diff < 0) {
     /* if the client is too slow wait until it has accumulated a certain delay to
      * switch to a lower bitrate */
     demux->accumulated_delay -= diff;
     if (demux->accumulated_delay >= limit) {
-      while (demux->accumulated_delay >= limit) {
-        gst_hls_demux_change_playlist (demux, FALSE);
-        demux->accumulated_delay -= limit;
-      }
+      gst_hls_demux_change_playlist (demux, FALSE);
+    } else if (demux->accumulated_delay < 0) {
       demux->accumulated_delay = 0;
     }
   }
@@ -1301,54 +990,39 @@ gst_hls_demux_switch_playlist (GstHLSDemux * demux)
 }
 
 static gboolean
-gst_hls_demux_get_next_fragment (GstHLSDemux * demux)
+gst_hls_demux_get_next_fragment (GstHLSDemux * demux, gboolean retry)
 {
   GstBuffer *buf;
   guint avail;
   const gchar *next_fragment_uri;
-  GstClockTime duration;
-  GstClockTime timestamp;
   gboolean discont;
 
-  if (!gst_m3u8_client_get_next_fragment (demux->client, &discont,
-          &next_fragment_uri, &duration, &timestamp)) {
+  next_fragment_uri =
+      gst_m3u8_client_get_next_fragment (demux->client, &discont);
+
+  if (!next_fragment_uri) {
     GST_INFO_OBJECT (demux, "This playlist doesn't contain more fragments");
     demux->end_of_playlist = TRUE;
-    gst_task_start (demux->task);
+    GST_TASK_SIGNAL (demux->task);
     return FALSE;
   }
 
   GST_INFO_OBJECT (demux, "Fetching next fragment %s", next_fragment_uri);
 
-  if (!gst_hls_demux_fetch_location (demux, next_fragment_uri)) {
-    /* FIXME: The gst_m3u8_get_next_fragment increments the sequence number
-       but another thread might call get_next_fragment and this decrement
-       will not redownload the failed fragment, but might duplicate the
-       download of a succeeded fragment
-     */
-    g_atomic_int_add (&demux->client->sequence, -1);
+  if (!gst_hls_demux_fetch_location (demux, next_fragment_uri))
     return FALSE;
-  }
 
   avail = gst_adapter_available (demux->download);
   buf = gst_adapter_take_buffer (demux->download, avail);
-  GST_BUFFER_DURATION (buf) = duration;
-  GST_BUFFER_TIMESTAMP (buf) = timestamp;
 
-  /* We actually need to do this every time we switch bitrate */
-  if (G_UNLIKELY (demux->do_typefind)) {
-    GstCaps *caps = gst_type_find_helper_for_buffer (NULL, buf, NULL);
-
-    if (!demux->input_caps || !gst_caps_is_equal (caps, demux->input_caps)) {
-      gst_caps_replace (&demux->input_caps, caps);
-      /* gst_pad_set_caps (demux->srcpad, demux->input_caps); */
+  if (G_UNLIKELY (demux->input_caps == NULL)) {
+    demux->input_caps = gst_type_find_helper_for_buffer (NULL, buf, NULL);
+    if (demux->input_caps) {
+      gst_pad_set_caps (demux->srcpad, demux->input_caps);
       GST_INFO_OBJECT (demux, "Input source caps: %" GST_PTR_FORMAT,
           demux->input_caps);
-      demux->do_typefind = FALSE;
-    } else
-      gst_caps_unref (caps);
+    }
   }
-  gst_buffer_set_caps (buf, demux->input_caps);
 
   if (discont) {
     GST_DEBUG_OBJECT (demux, "Marking fragment as discontinuous");
@@ -1356,7 +1030,7 @@ gst_hls_demux_get_next_fragment (GstHLSDemux * demux)
   }
 
   g_queue_push_tail (demux->queue, buf);
-  gst_task_start (demux->task);
+  GST_TASK_SIGNAL (demux->task);
   gst_adapter_clear (demux->download);
   return TRUE;
 }
