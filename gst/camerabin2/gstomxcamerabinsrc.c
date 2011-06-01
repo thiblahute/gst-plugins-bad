@@ -208,6 +208,8 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
     else
       g_object_set (self->video_source, "mode", OMX_CAMERA_MODE_VIDEO, NULL);
 
+    self->tee = gst_element_factory_make ("tee", NULL);
+
     self->vfsrc_filter = gst_element_factory_make ("capsfilter",
         "vfsrc-capsfilter");
     caps = gst_caps_from_string ("video/x-raw-yuv-strided");
@@ -227,19 +229,28 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
     self->imgsrc_stride =
         gst_element_factory_make ("identity", "imgsrc-stride");
 
-    gst_bin_add_many (cbin, self->video_source, self->vfsrc_filter,
+    gst_bin_add_many (cbin, self->video_source, self->tee, self->vfsrc_filter,
         self->vfsrc_stride, self->vidsrc_filter, self->vidsrc_stride,
         self->imgsrc_stride, NULL);
 
-    if (!gst_element_link_pads (self->video_source, "src",
-            self->vfsrc_filter, "sink"))
+    if (!gst_element_link_pads (self->video_source, "src", self->tee, "sink"))
+      goto link_error;
+
+    pad = gst_element_get_request_pad (self->tee, "src0");
+    g_object_set (self->tee, "alloc-pad", pad, NULL);
+    gst_object_unref (pad);
+    pad = gst_element_get_request_pad (self->tee, "src1");
+    gst_pad_add_buffer_probe (pad,
+        G_CALLBACK (gst_omx_camera_bin_src_vidsrc_probe), self);
+    gst_object_unref (pad);
+
+    if (!gst_element_link_pads (self->tee, "src0", self->vfsrc_filter, "sink"))
       goto link_error;
 
     if (!gst_element_link (self->vfsrc_filter, self->vfsrc_stride))
       goto link_error;
 
-    if (!gst_element_link_pads (self->video_source, "vidsrc",
-            self->vidsrc_filter, "sink"))
+    if (!gst_element_link_pads (self->tee, "src1", self->vidsrc_filter, "sink"))
       goto link_error;
 
     if (!gst_element_link (self->vidsrc_filter, self->vidsrc_stride))
@@ -248,11 +259,6 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
     if (!gst_element_link_pads (self->video_source, "imgsrc",
             self->imgsrc_stride, "sink"))
       goto link_error;
-
-    pad = gst_element_get_static_pad (self->video_source, "vidsrc");
-    gst_pad_add_buffer_probe (pad,
-        G_CALLBACK (gst_omx_camera_bin_src_vidsrc_probe), self);
-    gst_object_unref (pad);
 
     pad = gst_element_get_static_pad (self->video_source, "imgsrc");
     gst_pad_add_buffer_probe (pad,

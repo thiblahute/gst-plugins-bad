@@ -67,6 +67,7 @@ struct _GstOmxCameraBinSrc
 
   /* source elements */
   GstElement *video_source;
+  GstElement *tee;
   GstElement *vfsrc_filter;
   GstElement *vfsrc_stride;
   GstElement *vidsrc_filter;
