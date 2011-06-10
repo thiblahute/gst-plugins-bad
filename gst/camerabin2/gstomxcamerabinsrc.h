@@ -64,9 +64,12 @@ struct _GstOmxCameraBinSrc
 
   /* image capture controls */
   gint image_capture_count;
+  
+  GstElement *user_source_filter;
 
   /* source elements */
   GstElement *video_source;
+  GstElement *source_filter;
   GstElement *tee;
   GstElement *vfsrc_filter;
   GstElement *vfsrc_stride;
