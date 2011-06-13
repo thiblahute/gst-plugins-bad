@@ -1774,8 +1774,8 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
   }
 
   gst_camera_bin_check_and_replace_filter (camera, &camera->image_filter,
-      camera->user_image_filter, camera->src, camera->imagebin_capsfilter,
-      "imgsrc");
+      camera->user_image_filter, camera->imagebin_capsfilter,
+      camera->image_encodebin, NULL);
   gst_camera_bin_check_and_replace_filter (camera, &camera->video_filter,
       camera->user_video_filter, camera->src, camera->videobin_capsfilter,
       "vidsrc");
