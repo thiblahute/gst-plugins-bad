@@ -3,6 +3,7 @@ plugin_LTLIBRARIES = libgstcamerabin2.la
 libgstcamerabin2_la_SOURCES = gstviewfinderbin.c \
 				camerabingeneral.c \
 				gstwrappercamerabinsrc.c \
+				gstomxcamerabinsrc.c \
 				gstcamerabin2.c \
 				gstplugin.c
 
@@ -24,6 +25,7 @@ libgstcamerabin2_la_LIBTOOLFLAGS = --tag=disable-static
 noinst_HEADERS = gstviewfinderbin.h \
 		camerabingeneral.h \
 		gstwrappercamerabinsrc.h \
+		gstomxcamerabinsrc.h \
 		gstcamerabin2.h
 
 Android.mk: Makefile.am $(BUILT_SOURCES)
