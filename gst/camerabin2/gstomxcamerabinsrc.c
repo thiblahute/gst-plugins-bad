@@ -68,8 +68,7 @@ gst_omx_camera_bin_src_dispose (GObject * object)
   GstOmxCameraBinSrc *self = GST_OMX_CAMERA_BIN_SRC (object);
 
   gst_caps_replace (&self->image_capture_caps, NULL);
-  gst_object_unref (self->user_source_filter);
-  self->user_source_filter = NULL;
+  gst_object_replace ((GstObject **) & self->user_source_filter, NULL);
 
   G_OBJECT_CLASS (parent_class)->dispose (object);
 }
