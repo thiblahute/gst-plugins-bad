@@ -44,6 +44,9 @@ G_BEGIN_DECLS
 typedef struct _GstOmxCameraBinSrc GstOmxCameraBinSrc;
 typedef struct _GstOmxCameraBinSrcClass GstOmxCameraBinSrcClass;
 
+#define GST_TYPE_OMX_CAMERABIN_DEVICE (gst_omx_camerabin_device_get_type ())
+GType gst_omx_camerabin_device_get_type (void);
+
 
 /**
  * GstOmxCameraBinSrc:
