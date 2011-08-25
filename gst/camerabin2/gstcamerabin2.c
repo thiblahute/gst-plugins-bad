@@ -369,6 +369,10 @@ gst_camera_bin_start_capture (GstCameraBin2 * camerabin)
   gchar *location = NULL;
   GST_DEBUG_OBJECT (camerabin, "Received start-capture");
 
+  if (camerabin->mode == MODE_IMAGE) {
+    g_timer_start (camerabin->shot_to_save_timer);
+  }
+
   /* check that we have a valid location */
   if (camerabin->mode == MODE_VIDEO) {
     if (camerabin->location == NULL) {
@@ -627,6 +631,8 @@ gst_camera_bin_dispose (GObject * object)
     gst_object_unref (camerabin->preview_filter);
     camerabin->preview_filter = NULL;
   }
+
+  g_timer_destroy (camerabin->shot_to_save_timer);
 
   G_OBJECT_CLASS (parent_class)->dispose (object);
 }
@@ -928,6 +934,8 @@ gst_camera_bin_init (GstCameraBin2 * camera)
   camera->audio_capsfilter = gst_element_factory_make ("capsfilter",
       "audio-capsfilter");
   camera->audio_volume = gst_element_factory_make ("volume", "audio-volume");
+
+  camera->shot_to_save_timer = g_timer_new ();
 }
 
 static void
@@ -937,6 +945,9 @@ gst_image_capture_bin_post_image_done (GstCameraBin2 * camera,
   GstMessage *msg;
 
   g_return_if_fail (filename != NULL);
+
+  printf ("*** Shot-to-save delay: %lf\n",
+      g_timer_elapsed (camera->shot_to_save_timer, NULL));
 
   msg = gst_message_new_element (GST_OBJECT_CAST (camera),
       gst_structure_new ("image-done", "filename", G_TYPE_STRING,

@@ -145,6 +145,8 @@ struct _GstCameraBin2
   GstCamFlags flags;
 
   gboolean elements_created;
+
+  GTimer *shot_to_save_timer;
 };
 
 struct _GstCameraBin2Class
