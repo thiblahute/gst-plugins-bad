@@ -142,7 +142,7 @@ struct _GstPVRVideoSink
   gchar *media_title;
   gboolean redraw_borders;
   GstBuffer *current_buffer;
-
+  PVR2DRECT crop;
   WSEGLDrawableParams render_params;
 };
 

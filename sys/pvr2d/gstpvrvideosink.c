@@ -473,6 +473,7 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   PVR2DFORMAT pvr_format = pvrvideosink->format == GST_VIDEO_FORMAT_NV12 ?
       PVR2D_YUV420_2PLANE : PVR2D_ARGB8888;
   GstVideoRectangle result;
+  PVR2DRECT *crop = &pvrvideosink->crop;
 
   GST_DEBUG_OBJECT (pvrvideosink, "begin");
   g_mutex_lock (pvrvideosink->flow_lock);
@@ -550,10 +551,14 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   p_blt_3d->sSrc.SurfWidth = video_width;
   p_blt_3d->sSrc.SurfHeight = video_height;
 
-  p_blt_3d->rcSource.left = 0;
-  p_blt_3d->rcSource.top = 0;
-  p_blt_3d->rcSource.right = video_width;
-  p_blt_3d->rcSource.bottom = video_height;
+  if (crop->left || crop->top || crop->right || crop->bottom) {
+    p_blt_3d->rcSource = *crop;
+  } else {
+    p_blt_3d->rcSource.left = 0;
+    p_blt_3d->rcSource.top = 0;
+    p_blt_3d->rcSource.right = video_width;
+    p_blt_3d->rcSource.bottom = video_height;
+  }
 
   p_blt_3d->hUseCode = NULL;
 
@@ -746,7 +751,7 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   GstPVRVideoSink *pvrvideosink;
   gboolean ret = TRUE;
   GstStructure *structure;
-  gint new_width, new_height;
+  gint width, height;
   const GValue *fps;
   GstQuery *query;
 
@@ -758,10 +763,10 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   structure = gst_caps_get_structure (caps, 0);
 
   ret = gst_video_format_parse_caps_strided (caps, &pvrvideosink->format,
-      &new_width, &new_height, &pvrvideosink->rowstride);
+      &width, &height, &pvrvideosink->rowstride);
   if (pvrvideosink->rowstride == 0)
     pvrvideosink->rowstride =
-        gst_video_format_get_row_stride (pvrvideosink->format, 0, new_width);
+        gst_video_format_get_row_stride (pvrvideosink->format, 0, width);
   fps = gst_structure_get_value (structure, "framerate");
   ret &= (fps != NULL);
   if (!ret) {
@@ -823,13 +828,13 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   } else {
     g_mutex_unlock (pvrvideosink->flow_lock);
   }
-  GST_VIDEO_SINK_WIDTH (pvrvideosink) = new_width;
-  GST_VIDEO_SINK_HEIGHT (pvrvideosink) = new_height;
+  GST_VIDEO_SINK_WIDTH (pvrvideosink) = width;
+  GST_VIDEO_SINK_HEIGHT (pvrvideosink) = height;
 
   g_mutex_lock (pvrvideosink->flow_lock);
   if (!pvrvideosink->xwindow)
     pvrvideosink->xwindow = gst_pvrvideosink_create_window (pvrvideosink,
-        new_width, new_height);
+        width, height);
   g_mutex_unlock (pvrvideosink->flow_lock);
 
   pvrvideosink->fps_n = gst_value_get_fraction_numerator (fps);
@@ -931,6 +936,39 @@ gst_pvrvideosink_get_times (GstBaseSink * bsink, GstBuffer * buf,
       }
     }
   }
+}
+
+static gboolean
+gst_pvrvideosink_event (GstBaseSink * bsink, GstEvent * event)
+{
+  gboolean res;
+  GstPVRVideoSink *pvrvideosink = GST_PVRVIDEOSINK (bsink);
+
+  switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_CROP:
+    {
+      gint left, top, width, height;
+
+      PVR2DRECT *c = &pvrvideosink->crop;
+      gst_event_parse_crop (event, &top, &left, &width, &height);
+      c->top = top;
+      c->left = left;
+      if (width == -1)
+        c->right = GST_VIDEO_SINK_WIDTH (pvrvideosink);
+      else
+        c->right = left + width;
+
+      if (height == -1)
+        c->bottom = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
+      else
+        c->bottom = top + height;
+      break;
+    }
+    default:
+      res = TRUE;
+  }
+
+  return res;
 }
 
 static GstFlowReturn
@@ -1404,6 +1442,7 @@ gst_pvrvideosink_reset (GstPVRVideoSink * pvrvideosink)
   }
 
   gst_pvrvideosink_dcontext_clear (pvrvideosink);
+  memset (&pvrvideosink->crop, 0, sizeof (PVR2DRECT));
 }
 
 static void
@@ -1451,6 +1490,7 @@ gst_pvrvideosink_init (GstPVRVideoSink * pvrvideosink)
   pvrvideosink->current_buffer = NULL;
   pvrvideosink->event_thread = NULL;
   memset (&pvrvideosink->render_params, 0, sizeof (WSEGLDrawableParams));
+  memset (&pvrvideosink->crop, 0, sizeof (PVR2DRECT));
 }
 
 static void
@@ -1497,6 +1537,7 @@ gst_pvrvideosink_class_init (GstPVRVideoSinkClass * klass)
   gstbasesink_class->buffer_alloc =
       GST_DEBUG_FUNCPTR (gst_pvrvideosink_buffer_alloc);
   gstbasesink_class->get_times = GST_DEBUG_FUNCPTR (gst_pvrvideosink_get_times);
+  gstbasesink_class->event = GST_DEBUG_FUNCPTR (gst_pvrvideosink_event);
 
   gstbasesink_class->render = GST_DEBUG_FUNCPTR (gst_pvrvideosink_show_frame);
 }
