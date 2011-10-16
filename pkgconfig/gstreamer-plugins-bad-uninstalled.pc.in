@@ -1,6 +1,6 @@
 prefix=
 exec_prefix=
-libdir=${pcfiledir}/../gst-libs/gst/interfaces
+libdir=${pcfiledir}/../gst-libs/gst
 includedir=${pcfiledir}/../gst-libs
 
 Name: GStreamer Bad Plugin libraries, Uninstalled
@@ -8,6 +8,6 @@ Description: Currently includes the photography interface library, uninstalled
 Version: @VERSION@
 Requires: gstreamer-@GST_MAJORMINOR@ gstreamer-base-@GST_MAJORMINOR@
 
-Libs: -L${libdir} ${libdir}/libgstphotography-@GST_MAJORMINOR@.la
+Libs: -L${libdir}/video -L${libdir}/interfaces ${libdir}/libgstphotography-@GST_MAJORMINOR@.la
 Cflags: -I${includedir}
 
