@@ -440,6 +440,17 @@ gst_schro_enc_start (GstBaseVideoEncoder * base_video_encoder)
 static gboolean
 gst_schro_enc_stop (GstBaseVideoEncoder * base_video_encoder)
 {
+  GstSchroEnc *schro_enc = GST_SCHRO_ENC (base_video_encoder);
+
+  if (schro_enc->encoder) {
+    schro_encoder_free (schro_enc->encoder);
+    schro_enc->encoder = NULL;
+  }
+  if (schro_enc->video_format) {
+    g_free (schro_enc->video_format);
+    schro_enc->video_format = NULL;
+  }
+
   return TRUE;
 }
 
