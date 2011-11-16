@@ -67,6 +67,10 @@ struct _GstDrawContext
   long display_width;
   long display_height;
 
+  gulong physical_width;
+  gulong physical_height;
+  GValue *par;
+
   /* WSEGL */
   const WSEGL_FunctionTable *wsegl_table;
 
@@ -138,6 +142,8 @@ struct _GstPVRVideoSink
 
   GstVideoRectangle render_rect;
   gboolean have_render_rect;
+
+  GValue *display_par;
 
   gchar *media_title;
   gboolean redraw_borders;
