@@ -809,61 +809,12 @@ gst_pvrvideosink_xwindow_draw_borders (GstPVRVideoSink * pvrvideosink,
 /* Element stuff */
 
 static gboolean
-gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
+gst_pvrvideosink_configure_overlay (GstPVRVideoSink * pvrvideosink, gint width,
+    gint height, gint video_par_n, gint video_par_d, gint display_par_n,
+    gint display_par_d)
 {
-  GstPVRVideoSink *pvrvideosink;
-  gboolean ret = TRUE;
-  GstStructure *structure;
-  gint width, height;
-  const GValue *fps;
-  const GValue *caps_par;
-  gint video_par_n;
-  gint video_par_d;
-  gint display_par_n;
-  gint display_par_d;
   guint calculated_par_n;
   guint calculated_par_d;
-  GstQuery *query;
-
-  pvrvideosink = GST_PVRVIDEOSINK (bsink);
-
-  GST_DEBUG_OBJECT (pvrvideosink,
-      "sinkconnect possible caps with given caps %", caps);
-
-  structure = gst_caps_get_structure (caps, 0);
-
-  ret = gst_video_format_parse_caps_strided (caps, &pvrvideosink->format,
-      &width, &height, &pvrvideosink->rowstride);
-  if (pvrvideosink->rowstride == 0)
-    pvrvideosink->rowstride =
-        gst_video_format_get_row_stride (pvrvideosink->format, 0, width);
-  fps = gst_structure_get_value (structure, "framerate");
-  ret &= (fps != NULL);
-  if (!ret) {
-    GST_ERROR_OBJECT (pvrvideosink, "problem at parsing caps");
-    return FALSE;
-  }
-
-  /* get video's pixel-aspect-ratio */
-  caps_par = gst_structure_get_value (structure, "pixel-aspect-ratio");
-  if (caps_par) {
-    video_par_n = gst_value_get_fraction_numerator (caps_par);
-    video_par_d = gst_value_get_fraction_denominator (caps_par);
-  } else {
-    video_par_n = 1;
-    video_par_d = 1;
-  }
-
-  /* get display's pixel-aspect-ratio */
-  if (pvrvideosink->display_par) {
-    display_par_n =
-        gst_value_get_fraction_numerator (pvrvideosink->display_par);
-    display_par_d =
-        gst_value_get_fraction_denominator (pvrvideosink->display_par);
-  } else {
-    display_par_n = 1;
-    display_par_d = 1;
-  }
 
   if (!gst_video_calculate_display_ratio (&calculated_par_n, &calculated_par_d,
           width, height, video_par_n, video_par_d, display_par_n,
@@ -902,6 +853,65 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   GST_DEBUG_OBJECT (pvrvideosink, "scaling to %dx%d",
       GST_VIDEO_SINK_WIDTH (pvrvideosink),
       GST_VIDEO_SINK_HEIGHT (pvrvideosink));
+
+  return TRUE;
+}
+
+static gboolean
+gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
+{
+  GstPVRVideoSink *pvrvideosink;
+  gboolean ret = TRUE;
+  GstStructure *structure;
+  gint width, height;
+  const GValue *fps;
+  const GValue *caps_par;
+  GstQuery *query;
+
+  pvrvideosink = GST_PVRVIDEOSINK (bsink);
+
+  GST_DEBUG_OBJECT (pvrvideosink,
+      "sinkconnect possible caps with given caps %", caps);
+
+  structure = gst_caps_get_structure (caps, 0);
+
+  ret = gst_video_format_parse_caps_strided (caps, &pvrvideosink->format,
+      &width, &height, &pvrvideosink->rowstride);
+  if (pvrvideosink->rowstride == 0)
+    pvrvideosink->rowstride =
+        gst_video_format_get_row_stride (pvrvideosink->format, 0, width);
+  fps = gst_structure_get_value (structure, "framerate");
+  ret &= (fps != NULL);
+  if (!ret) {
+    GST_ERROR_OBJECT (pvrvideosink, "problem at parsing caps");
+    return FALSE;
+  }
+
+  /* get video's pixel-aspect-ratio */
+  caps_par = gst_structure_get_value (structure, "pixel-aspect-ratio");
+  if (caps_par) {
+    pvrvideosink->video_par_n = gst_value_get_fraction_numerator (caps_par);
+    pvrvideosink->video_par_d = gst_value_get_fraction_denominator (caps_par);
+  } else {
+    pvrvideosink->video_par_n = 1;
+    pvrvideosink->video_par_d = 1;
+  }
+
+  /* get display's pixel-aspect-ratio */
+  if (pvrvideosink->display_par) {
+    pvrvideosink->display_par_n =
+        gst_value_get_fraction_numerator (pvrvideosink->display_par);
+    pvrvideosink->display_par_d =
+        gst_value_get_fraction_denominator (pvrvideosink->display_par);
+  } else {
+    pvrvideosink->display_par_n = 1;
+    pvrvideosink->display_par_d = 1;
+  }
+
+  if (!gst_pvrvideosink_configure_overlay (pvrvideosink, width, height,
+          pvrvideosink->video_par_n, pvrvideosink->video_par_d,
+          pvrvideosink->display_par_n, pvrvideosink->display_par_d))
+    return FALSE;
 
   if (pvrvideosink->current_caps) {
     GST_DEBUG_OBJECT (pvrvideosink, "already have caps set");
@@ -1099,6 +1109,11 @@ gst_pvrvideosink_event (GstBaseSink * bsink, GstEvent * event)
         c->bottom = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
       else
         c->bottom = top + height;
+
+      if (!gst_pvrvideosink_configure_overlay (pvrvideosink, width, height,
+              pvrvideosink->video_par_n, pvrvideosink->video_par_d,
+              pvrvideosink->display_par_n, pvrvideosink->display_par_d))
+        return FALSE;
       break;
     }
     default:

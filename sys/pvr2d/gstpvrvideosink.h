@@ -144,6 +144,10 @@ struct _GstPVRVideoSink
   gboolean have_render_rect;
 
   GValue *display_par;
+  gint video_par_n;
+  gint video_par_d;
+  gint display_par_n;
+  gint display_par_d;
 
   gchar *media_title;
   gboolean redraw_borders;
