@@ -53,6 +53,8 @@ static GstDucatiBuffer *
 gst_ducati_buffer_new (GstPvrBufferPool * pool)
 {
   PVR2DERROR pvr_error;
+  void *buf;
+  guint sz;
   GstDucatiBuffer *self = (GstDucatiBuffer *)
       gst_mini_object_new (GST_TYPE_DUCATIBUFFER);
 
@@ -61,7 +63,14 @@ gst_ducati_buffer_new (GstPvrBufferPool * pool)
   self->pool = (GstPvrBufferPool *)
       gst_mini_object_ref (GST_MINI_OBJECT (pool));
 
-  GST_BUFFER_DATA (self) = gst_ducati_alloc_1d (pool->size);
+  if (pool->strided) {
+    buf = gst_ducati_alloc_2d (pool->padded_width, pool->padded_height, &sz);
+  } else {
+    sz = pool->size;
+    buf = gst_ducati_alloc_1d (sz);
+  }
+
+  GST_BUFFER_DATA (self) = buf;
   GST_BUFFER_SIZE (self) = pool->size;
   GST_LOG_OBJECT (pool->element, "width=%d, height=%d and size=%d",
       pool->padded_width, pool->padded_height, pool->size);
@@ -176,11 +185,20 @@ gst_pvr_bufferpool_new (GstElement * element, GstCaps * caps, gint num_buffers,
 {
   GstPvrBufferPool *self = (GstPvrBufferPool *)
       gst_mini_object_new (GST_TYPE_PVRBUFFERPOOL);
-  GstStructure *s = gst_caps_get_structure (caps, 0);
+  GstStructure *s;
+
+  g_return_val_if_fail (caps != NULL, NULL);
+  s = gst_caps_get_structure (caps, 0);
 
   self->element = gst_object_ref (element);
   gst_structure_get_int (s, "width", &self->padded_width);
   gst_structure_get_int (s, "height", &self->padded_height);
+  if (strcmp (gst_structure_get_name (s), "video/x-raw-yuv-strided")) {
+    self->strided = FALSE;
+  } else {
+    self->strided = TRUE;
+    gst_structure_get_int (s, "rowstride", &self->rowstride);
+  }
   self->caps = gst_caps_ref (caps);
   self->size = size;
   self->pvr_context = pvr_context;

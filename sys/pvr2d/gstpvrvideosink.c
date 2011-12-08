@@ -64,11 +64,17 @@ static void gst_pvrvideosink_xwindow_destroy (GstPVRVideoSink * pvrvideosink,
     GstXWindow * xwindow);
 
 static GstStaticPadTemplate gst_pvrvideosink_sink_template_factory =
-GST_STATIC_PAD_TEMPLATE ("sink",
+    GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw-yuv, "
         "format = (fourcc) NV12, "
+        "width = " GST_VIDEO_SIZE_RANGE ", "
+        "height = " GST_VIDEO_SIZE_RANGE ", "
+        "framerate = " GST_VIDEO_FPS_RANGE ";"
+        "video/x-raw-yuv-strided, "
+        "format = (fourcc) NV12, "
+        "rowstride = (int) 4096, "
         "width = " GST_VIDEO_SIZE_RANGE ", "
         "height = " GST_VIDEO_SIZE_RANGE ", "
         "framerate = " GST_VIDEO_FPS_RANGE));

@@ -51,6 +51,8 @@ struct _GstPvrBufferPool
   /* output (padded) size including any codec padding: */
   gint padded_width, padded_height;
   gint size;
+  gboolean strided;
+  gint rowstride;
   PVR2DCONTEXTHANDLE pvr_context;
 
   GstCaps *caps;
