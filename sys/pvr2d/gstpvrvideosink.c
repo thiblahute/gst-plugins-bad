@@ -1096,6 +1096,8 @@ gst_pvrvideosink_event (GstBaseSink * bsink, GstEvent * event)
 {
   gboolean res;
   GstPVRVideoSink *pvrvideosink = GST_PVRVIDEOSINK (bsink);
+  GstStructure *structure;
+  GstMessage *message;
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CROP:
@@ -1106,15 +1108,26 @@ gst_pvrvideosink_event (GstBaseSink * bsink, GstEvent * event)
       gst_event_parse_crop (event, &top, &left, &width, &height);
       c->top = top;
       c->left = left;
-      if (width == -1)
+      if (width == -1) {
         c->right = GST_VIDEO_SINK_WIDTH (pvrvideosink);
-      else
+        width = GST_VIDEO_SINK_WIDTH (pvrvideosink);
+      } else {
         c->right = left + width;
+      }
 
-      if (height == -1)
+      if (height == -1) {
         c->bottom = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
-      else
+        height = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
+      } else {
         c->bottom = top + height;
+      }
+
+      structure = gst_structure_new ("video-size-crop", "width", G_TYPE_INT,
+          width, "height", G_TYPE_INT, height, NULL);
+      message = gst_message_new_application (GST_OBJECT (pvrvideosink),
+          structure);
+      gst_bus_post (gst_element_get_bus (GST_ELEMENT (pvrvideosink)), message);
+
 
       if (!gst_pvrvideosink_configure_overlay (pvrvideosink, width, height,
               pvrvideosink->video_par_n, pvrvideosink->video_par_d,
