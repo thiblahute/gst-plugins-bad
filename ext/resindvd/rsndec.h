@@ -70,8 +70,6 @@ struct _RsnDec {
 
 struct _RsnDecClass {
   GstBinClass parent_class;
-
-  const GList * (*get_decoder_factories) (RsnDecClass *klass);
 };
 
 G_END_DECLS
