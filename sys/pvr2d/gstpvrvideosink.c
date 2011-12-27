@@ -103,6 +103,28 @@ static GstVideoSinkClass *parent_class = NULL;
 #define GST_PVRVIDEO_BUFFER(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_PVRVIDEO_BUFFER, GstPVRVideoBuffer))
 #define GST_PVRVIDEO_BUFFER_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_PVRVIDEO_BUFFER, GstPVRVideoBufferClass))
 
+
+static const char *
+pvr2dstrerr(PVR2DERROR err)
+{
+  switch (err) {
+  case PVR2D_OK:
+    return "Ok";
+  case PVR2DERROR_DEVICE_UNAVAILABLE:
+    return "Failed to blit, device unavailable";
+  case PVR2DERROR_INVALID_CONTEXT:
+    return "Failed to blit, invalid context";
+  case PVR2DERROR_INVALID_PARAMETER:
+    return "Failed to blit, invalid parameter";
+  case PVR2DERROR_HW_FEATURE_NOT_SUPPORTED:
+    return "Failed to blit, hardware feature not supported";
+  case PVR2DERROR_GENERIC_ERROR:
+    return "Failed to blit, generic error";
+  default:
+    return "Unknown error";
+  }
+}
+
 /* This function calculates the pixel aspect ratio based on the properties
  *  * in the xcontext structure and stores it there. */
 static void
@@ -529,10 +551,8 @@ gst_pvrvideosink_create_window (GstPVRVideoSink * pvrvideosink, gint width,
 static void
 gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
 {
-  PVR2DERROR pvr_error;
+  PVR2DERROR pvr_error = PVR2D_OK;
   GstDrawContext *dcontext = pvrvideosink->dcontext;
-  GstCaps *caps;
-  GstStructure *structure;
   gint video_width;
   gint video_height;
   gboolean ret;
@@ -545,6 +565,7 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   PVR2DRECT *crop = &pvrvideosink->crop;
 
   GST_DEBUG_OBJECT (pvrvideosink, "begin");
+
   g_mutex_lock (pvrvideosink->flow_lock);
   if (buffer == NULL)
     buffer = pvrvideosink->current_buffer;
@@ -554,17 +575,11 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     return;
   }
 
-  caps = GST_BUFFER_CAPS (buffer);
+  video_width = pvrvideosink->video_width;
+  video_height = pvrvideosink->video_height;
+
   src_mem = gst_ducati_buffer_get_meminfo ((GstDucatiBuffer *) buffer);
   p_blt_3d = dcontext->p_blt_info;
-
-  structure = gst_caps_get_structure (caps, 0);
-  ret = gst_structure_get_int (structure, "width", &video_width);
-  ret &= gst_structure_get_int (structure, "height", &video_height);
-  if (!ret) {
-    GST_ERROR_OBJECT (pvrvideosink, "Failed to get dimensions of the buffer");
-    goto done;
-  }
 
   g_mutex_lock (pvrvideosink->dcontext->x_lock);
 
@@ -572,6 +587,18 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
      draw borders only on expose event or after a size change. */
   if (!(pvrvideosink->current_buffer) || pvrvideosink->redraw_borders) {
     draw_border = TRUE;
+  }
+
+  /* Sometimes the application hasn't really given us valid dimensions
+   * when we want to render the first frame, which throws pvr into a
+   * tizzy, so let's just detect it and bail early:
+   */
+  if ((pvrvideosink->xwindow->width <= 1) ||
+      (pvrvideosink->xwindow->height <= 1)) {
+    GST_DEBUG_OBJECT (pvrvideosink, "skipping render due to invalid "
+        "window dimentions: %dx%d", pvrvideosink->xwindow->width,
+        pvrvideosink->xwindow->height);
+    goto done;
   }
 
   /* Store a reference to the last image we put, lose the previous one */
@@ -635,41 +662,15 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     p_blt_3d->bDisableDestInput = TRUE;
   else
     /* blit fails for RGB without this... not sure why yet... */
+    /* I'd guess because using ARGB format (ie. has alpha channel) */
     p_blt_3d->bDisableDestInput = FALSE;
 
   pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
       dcontext->p_blt_info);
 
-  switch (pvr_error) {
-    case PVR2D_OK:
-      break;
-    case PVR2DERROR_DEVICE_UNAVAILABLE:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, device unavailable");
-      goto done;
-      break;
-    case PVR2DERROR_INVALID_CONTEXT:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, invalid context");
-      goto done;
-      break;
-    case PVR2DERROR_INVALID_PARAMETER:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, invalid parameter");
-      goto done;
-      break;
-    case PVR2DERROR_HW_FEATURE_NOT_SUPPORTED:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, "
-          "hardware feature not supported");
-      goto done;
-      break;
-    case PVR2DERROR_GENERIC_ERROR:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, generic error");
-      goto done;
-      break;
-    default:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, "
-          "undefined error %d", pvr_error);
-      goto done;
-      break;
-  }
+  if (pvr_error)
+    goto done;
+
   dcontext->wsegl_table->pfnWSEGL_SwapDrawable (dcontext->drawable_handle, 1);
 
   if (draw_border) {
@@ -677,10 +678,14 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
         result);
     pvrvideosink->redraw_borders = FALSE;
   }
-  g_mutex_unlock (pvrvideosink->dcontext->x_lock);
 
 done:
+  if (pvr_error) {
+    GST_ERROR_OBJECT (pvrvideosink, "%s (%d)",
+        pvr2dstrerr(pvr_error), pvr_error);
+  }
   GST_DEBUG_OBJECT (pvrvideosink, "end");
+  g_mutex_unlock (pvrvideosink->dcontext->x_lock);
   g_mutex_unlock (pvrvideosink->flow_lock);
 }
 
@@ -727,40 +732,16 @@ gst_pvrvideosink_pvrfill_rectangle (GstPVRVideoSink * pvrvideosink,
   p_blt2d_info->DSizeY = rect.h;
 
   pvr_error = PVR2DBlt (pvrvideosink->dcontext->pvr_context, p_blt2d_info);
+  if (pvr_error)
+    goto done;
 
-  switch (pvr_error) {
-    case PVR2D_OK:
-      break;
-    case PVR2DERROR_DEVICE_UNAVAILABLE:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, device unavailable");
-      goto done;
-      break;
-    case PVR2DERROR_INVALID_CONTEXT:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, invalid context");
-      goto done;
-      break;
-    case PVR2DERROR_INVALID_PARAMETER:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, invalid parameter");
-      goto done;
-      break;
-    case PVR2DERROR_HW_FEATURE_NOT_SUPPORTED:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, "
-          "hardware feature not supported");
-      goto done;
-      break;
-    case PVR2DERROR_GENERIC_ERROR:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, generic error");
-      goto done;
-      break;
-    default:
-      GST_ERROR_OBJECT (pvrvideosink, "Failed to blit, "
-          "undefined error %d", pvr_error);
-      goto done;
-      break;
-  }
   dcontext->wsegl_table->pfnWSEGL_SwapDrawable (dcontext->drawable_handle, 1);
 
 done:
+  if (pvr_error) {
+    GST_ERROR_OBJECT (pvrvideosink, "%s (%d)",
+        pvr2dstrerr(pvr_error), pvr_error);
+  }
   GST_DEBUG_OBJECT (pvrvideosink, "end");
 }
 
@@ -879,6 +860,15 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   GST_DEBUG_OBJECT (pvrvideosink,
       "sinkconnect possible caps with given caps %", caps);
 
+  if (pvrvideosink->current_caps) {
+    GST_DEBUG_OBJECT (pvrvideosink, "already have caps set");
+    if (gst_caps_is_equal (pvrvideosink->current_caps, caps)) {
+      GST_DEBUG_OBJECT (pvrvideosink, "caps are equal!");
+      return TRUE;
+    }
+    GST_DEBUG_OBJECT (pvrvideosink, "caps are different");
+  }
+
   structure = gst_caps_get_structure (caps, 0);
 
   ret = gst_video_format_parse_caps_strided (caps, &pvrvideosink->format,
@@ -892,6 +882,9 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
     GST_ERROR_OBJECT (pvrvideosink, "problem at parsing caps");
     return FALSE;
   }
+
+  pvrvideosink->video_width = width;
+  pvrvideosink->video_height = height;
 
   /* get video's pixel-aspect-ratio */
   caps_par = gst_structure_get_value (structure, "pixel-aspect-ratio");
@@ -918,15 +911,6 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
           pvrvideosink->video_par_n, pvrvideosink->video_par_d,
           pvrvideosink->display_par_n, pvrvideosink->display_par_d))
     return FALSE;
-
-  if (pvrvideosink->current_caps) {
-    GST_DEBUG_OBJECT (pvrvideosink, "already have caps set");
-    if (gst_caps_is_equal (pvrvideosink->current_caps, caps)) {
-      GST_DEBUG_OBJECT (pvrvideosink, "caps are equal!");
-      return TRUE;
-    }
-    GST_DEBUG_OBJECT (pvrvideosink, "caps are different");
-  }
 
   g_mutex_lock (pvrvideosink->pool_lock);
   if (pvrvideosink->buffer_pool) {
@@ -1227,9 +1211,7 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
 {
   GstPVRVideoSink *pvrvideosink;
   GstDucatiBuffer *pvrvideo = NULL;
-  GstStructure *structure = NULL;
   GstFlowReturn ret = GST_FLOW_OK;
-  gint width, height;
 
   pvrvideosink = GST_PVRVIDEOSINK (bsink);
 
@@ -1256,16 +1238,6 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
   GST_LOG_OBJECT (pvrvideosink,
       "a buffer of %d bytes was requested with caps %" GST_PTR_FORMAT
       " and offset %" G_GUINT64_FORMAT, size, caps, offset);
-
-  /* get struct to see what is requested */
-  structure = gst_caps_get_structure (caps, 0);
-  if (!gst_structure_get_int (structure, "width", &width) ||
-      !gst_structure_get_int (structure, "height", &height)) {
-    GST_WARNING_OBJECT (pvrvideosink, "invalid caps for buffer allocation %"
-        GST_PTR_FORMAT, caps);
-    ret = GST_FLOW_NOT_NEGOTIATED;
-    goto beach;
-  }
 
   g_mutex_lock (pvrvideosink->pool_lock);
   /* initialize the buffer pool if not initialized yet */
@@ -1648,6 +1620,8 @@ gst_pvrvideosink_init (GstPVRVideoSink * pvrvideosink)
 
   pvrvideosink->fps_n = 0;
   pvrvideosink->fps_d = 1;
+  pvrvideosink->video_width = 0;
+  pvrvideosink->video_height = 0;
 
   pvrvideosink->flow_lock = g_mutex_new ();
   pvrvideosink->pool_lock = g_mutex_new ();

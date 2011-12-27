@@ -119,9 +119,11 @@ struct _GstPVRVideoSink
   gboolean running;
 
   /* Framerate numerator and denominator */
+  gint fps_n, fps_d;
+  /* size of incoming video, used as the size for XvImage */
+  guint video_width, video_height;
+
   GstVideoFormat format;
-  gint fps_n;
-  gint fps_d;
   gint rowstride;
 
   GThread *event_thread;
