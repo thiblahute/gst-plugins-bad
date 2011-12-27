@@ -45,6 +45,7 @@ struct SpuColour {
   guint16 U;
   guint16 V;
   guint8 A;
+  guint8 vis;   /* is this color visible? */
 };
 
 void gstspu_clear_comp_buffers (SpuState * state);

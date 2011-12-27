@@ -260,7 +260,7 @@ pgs_composition_object_render (PgsCompositionObject * obj, SpuState * state,
     }
 
     colour = &state->pgs.palette[pal_id];
-    if (colour->A) {
+    if (colour->A && colour->vis) {
       guint32 inv_A = 0xff - colour->A;
       if (G_UNLIKELY (x + run_len > max_x))
         run_len = (max_x - x);
@@ -494,6 +494,8 @@ parse_set_palette (GstDVDSpu * dvdspu, guint8 type, guint8 * payload,
     state->pgs.palette[n].U = U * A;
     state->pgs.palette[n].V = V * A;
     state->pgs.palette[n].A = A;
+    state->pgs.palette[n].vis = state->pgs.palette[n].Y ||
+        state->pgs.palette[n].U || state->pgs.palette[n].V;
 
     payload += PGS_PALETTE_ENTRY_SIZE;
   }
