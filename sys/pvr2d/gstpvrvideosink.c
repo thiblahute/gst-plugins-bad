@@ -1153,7 +1153,7 @@ gst_pvrvideosink_show_frame (GstBaseSink * vsink, GstBuffer * buf)
 
   GST_DEBUG_OBJECT (pvrvideosink, "render buffer: %p", buf);
 
-  if (!GST_IS_BUFFER (buf)) {
+  if (!GST_IS_DUCATIBUFFER (buf)) {
     GstFlowReturn ret;
 
     /* special case check for sub-buffers:  In certain cases, places like
