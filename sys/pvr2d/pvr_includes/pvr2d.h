@@ -395,6 +395,7 @@ typedef struct
 	PVR2D_BOOL				bDisableDestInput;			/* set true if the destination is output only */
 	PPVR2D_SURFACE_EXT		pDstExt;					/* Extended format params for dest */
 	PPVR2D_SURFACE_EXT		pSrcExt[2];					/* Extended format params for source 1 and 2 */
+	PVR2D_BOOL        bFilter;      /* set true to enable smoothing */
 	PVR2D_LONG				Reserved[4];				/* Reserved, must be zero */
 
 } PVR2D_3DBLT_EXT, *PPVR2D_3DBLT_EXT;

@@ -668,6 +668,7 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     /* NOTE: this probably won't look so good if linear (instead
      * of point) filtering is used.
      */
+    p_blt_3d->bFilter = FALSE;
 
     /* for interlaced blits, we split up the image into two blits..
      * we expect even field on top, odd field on bottom.  We blit
@@ -693,6 +694,7 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
         dcontext->p_blt_info);
 
   } else {
+    p_blt_3d->bFilter = TRUE;
     pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
         dcontext->p_blt_info);
   }
