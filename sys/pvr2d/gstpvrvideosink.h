@@ -125,6 +125,7 @@ struct _GstPVRVideoSink
 
   GstVideoFormat format;
   gint rowstride;
+  gboolean interlaced;
 
   GThread *event_thread;
   GMutex *flow_lock;

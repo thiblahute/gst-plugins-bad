@@ -665,8 +665,40 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     /* I'd guess because using ARGB format (ie. has alpha channel) */
     p_blt_3d->bDisableDestInput = FALSE;
 
-  pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
-      dcontext->p_blt_info);
+  if (pvrvideosink->interlaced) {
+    /* NOTE: this probably won't look so good if linear (instead
+     * of point) filtering is used.
+     */
+
+    /* for interlaced blits, we split up the image into two blits..
+     * we expect even field on top, odd field on bottom.  We blit
+     * from first top half, then bottom half, doubling up the
+     * stride of the destination buffer.
+     */
+    /* step 1: */
+    p_blt_3d->rcSource.top /= 2;
+    p_blt_3d->rcSource.bottom /= 2;
+    p_blt_3d->rcDest.top /= 2;
+    p_blt_3d->rcDest.bottom /= 2;
+    p_blt_3d->sDst.Stride *= 2;
+
+    pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
+        dcontext->p_blt_info);
+    if (pvr_error)
+      goto done;
+
+    /* step 2: */
+    p_blt_3d->rcSource.top += video_height / 2;
+    p_blt_3d->rcSource.bottom += video_height / 2;
+    p_blt_3d->sDst.SurfOffset = p_blt_3d->sDst.Stride / 2;
+
+    pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
+        dcontext->p_blt_info);
+
+  } else {
+    pvr_error = PVR2DBlt3DExt (pvrvideosink->dcontext->pvr_context,
+        dcontext->p_blt_info);
+  }
 
   if (pvr_error)
     goto done;
@@ -885,6 +917,11 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   pvrvideosink->video_width = width;
   pvrvideosink->video_height = height;
+
+  /* figure out if we are dealing w/ interlaced */
+  pvrvideosink->interlaced = FALSE;
+  gst_structure_get_boolean (structure, "interlaced",
+      &pvrvideosink->interlaced);
 
   /* get video's pixel-aspect-ratio */
   caps_par = gst_structure_get_value (structure, "pixel-aspect-ratio");
