@@ -105,8 +105,6 @@ gst_ducati_buffer_finalize (GstDucatiBuffer * self)
   if (pool->running) {
     resuscitated = TRUE;
 
-    GST_LOG_OBJECT (pool->element, "reviving buffer %p", self);
-
     g_queue_push_head (pool->free_buffers, self);
   } else {
     GST_LOG_OBJECT (pool->element, "the pool is shutting down");
@@ -114,7 +112,7 @@ gst_ducati_buffer_finalize (GstDucatiBuffer * self)
   GST_PVR_BUFFERPOOL_UNLOCK (pool);
 
   if (resuscitated) {
-    GST_LOG_OBJECT (pool->element, "reviving buffer %p, %d", self, index);
+    GST_LOG_OBJECT (pool->element, "reviving buffer %p", self);
     gst_buffer_ref (GST_BUFFER (self));
     GST_BUFFER_SIZE (self) = 0;
   }
