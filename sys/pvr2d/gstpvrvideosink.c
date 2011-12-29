@@ -1403,15 +1403,12 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
     ret = GST_FLOW_WRONG_STATE;
     g_mutex_unlock (pvrvideosink->pool_lock);
     goto beach;
-  } else {
-    g_mutex_unlock (pvrvideosink->pool_lock);
   }
 
   GST_LOG_OBJECT (pvrvideosink,
       "a buffer of %d bytes was requested with caps %" GST_PTR_FORMAT
       " and offset %" G_GUINT64_FORMAT, size, caps, offset);
 
-  g_mutex_lock (pvrvideosink->pool_lock);
   /* initialize the buffer pool if not initialized yet */
   if (G_UNLIKELY (!pvrvideosink->buffer_pool ||
           pvrvideosink->buffer_pool->size != size)) {
@@ -1430,7 +1427,7 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
       return GST_FLOW_ERROR;
     }
   }
-  pvrvideo = gst_pvr_bufferpool_get (pvrvideosink->buffer_pool, NULL);
+  pvrvideo = gst_pvr_bufferpool_get (pvrvideosink->buffer_pool);
   g_mutex_unlock (pvrvideosink->pool_lock);
 
   *buf = GST_BUFFER_CAST (pvrvideo);

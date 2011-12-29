@@ -28,20 +28,6 @@ GST_DEBUG_CATEGORY_EXTERN (gst_debug_pvrvideosink);
 
 static GstBufferClass *buffer_parent_class;
 
-/* Get the original buffer, or whatever is the best output buffer.
- * Consumes the input reference, produces the output reference
- */
-GstBuffer *
-gst_ducati_buffer_get (GstDucatiBuffer * self)
-{
-  if (self->orig) {
-    // TODO copy to orig buffer.. if needed.
-    gst_buffer_unref (self->orig);
-    self->orig = NULL;
-  }
-  return GST_BUFFER (self);
-}
-
 PVR2DMEMINFO *
 gst_ducati_buffer_get_meminfo (GstDucatiBuffer * self)
 {
@@ -90,6 +76,27 @@ gst_ducati_buffer_new (GstPvrBufferPool * pool)
   return self;
 }
 
+static GstDucatiBuffer *
+gst_ducati_buffer_copy (GstDucatiBuffer * self)
+{
+  GstPvrBufferPool *pool = self->pool;
+  GstDucatiBuffer *copy;
+
+  g_return_val_if_fail (self != NULL, NULL);
+
+  GST_LOG_OBJECT (pool->element, "copy buffer %p", self);
+
+  copy = gst_pvr_bufferpool_get (pool);
+
+  memcpy (GST_BUFFER_DATA (copy),
+      GST_BUFFER_DATA (self), GST_BUFFER_SIZE (self));
+
+  gst_buffer_copy_metadata (GST_BUFFER (copy),
+      GST_BUFFER (self), GST_BUFFER_COPY_ALL);
+
+  return copy;
+
+}
 
 static void
 gst_ducati_buffer_finalize (GstDucatiBuffer * self)
@@ -145,6 +152,8 @@ gst_ducati_buffer_class_init (gpointer g_class, gpointer class_data)
 
   buffer_parent_class = g_type_class_peek_parent (g_class);
 
+  mini_object_class->copy = (GstMiniObjectCopyFunction)
+      GST_DEBUG_FUNCPTR (gst_ducati_buffer_copy);
   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
       GST_DEBUG_FUNCPTR (gst_ducati_buffer_finalize);
 }
@@ -259,7 +268,7 @@ gst_pvr_bufferpool_stop_running (GstPvrBufferPool * self, gboolean unwrap)
 
 /** get buffer from bufferpool, allocate new buffer if needed */
 GstDucatiBuffer *
-gst_pvr_bufferpool_get (GstPvrBufferPool * self, GstBuffer * orig)
+gst_pvr_bufferpool_get (GstPvrBufferPool * self)
 {
   GstDucatiBuffer *buf = NULL;
 
@@ -272,15 +281,10 @@ gst_pvr_bufferpool_get (GstPvrBufferPool * self, GstBuffer * orig)
     buf = g_queue_pop_head (self->free_buffers);
     if (!buf)
       buf = gst_ducati_buffer_new (self);
-    buf->orig = orig;
     g_queue_push_head (self->used_buffers, buf);
   }
   GST_PVR_BUFFERPOOL_UNLOCK (self);
 
-  if (buf && orig) {
-    GST_BUFFER_TIMESTAMP (buf) = GST_BUFFER_TIMESTAMP (orig);
-    GST_BUFFER_DURATION (buf) = GST_BUFFER_DURATION (orig);
-  }
   GST_BUFFER_SIZE (buf) = self->size;
 
   return buf;

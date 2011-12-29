@@ -68,8 +68,7 @@ GstPvrBufferPool * gst_pvr_bufferpool_new (GstElement * element,
     GstCaps * caps, gint num_buffers, gint size,
     PVR2DCONTEXTHANDLE pvr_context);
 void gst_pvr_bufferpool_stop_running (GstPvrBufferPool * pool, gboolean unwrap);
-GstDucatiBuffer * gst_pvr_bufferpool_get (GstPvrBufferPool * self,
-    GstBuffer * orig);
+GstDucatiBuffer * gst_pvr_bufferpool_get (GstPvrBufferPool * self);
 
 #define GST_PVR_BUFFERPOOL_LOCK(self)     g_mutex_lock ((self)->lock)
 #define GST_PVR_BUFFERPOOL_UNLOCK(self)   g_mutex_unlock ((self)->lock)
@@ -78,12 +77,10 @@ struct _GstDucatiBuffer {
   GstBuffer parent;
 
   GstPvrBufferPool *pool; /* buffer-pool that this buffer belongs to */
-  GstBuffer       *orig;     /* original buffer, if we need to copy output */
   PVR2DMEMINFO *src_mem; /* Memory wrapped by pvr */
   gboolean wrapped;
 };
 
-GstBuffer * gst_ducati_buffer_get (GstDucatiBuffer * self);
 PVR2DMEMINFO * gst_ducati_buffer_get_meminfo (GstDucatiBuffer * self);
 
 G_END_DECLS
