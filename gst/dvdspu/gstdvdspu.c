@@ -562,7 +562,7 @@ dvdspu_handle_vid_buffer (GstDVDSpu * dvdspu, GstBuffer * buf)
       goto no_ref_frame;
     }
 
-    buf = gst_buffer_copy (dvdspu->ref_frame);
+    buf = gst_buffer_ref (dvdspu->ref_frame);
 
 #if 0
     g_print ("Duping frame %" GST_TIME_FORMAT " with new TS %" GST_TIME_FORMAT
@@ -600,7 +600,7 @@ dvdspu_handle_vid_buffer (GstDVDSpu * dvdspu, GstBuffer * buf)
 
       /* Take a copy in case we hit a still frame and need the pristine 
        * frame around */
-      copy = gst_buffer_copy (buf);
+      copy = gst_buffer_ref (buf);
       gst_buffer_replace (&dvdspu->ref_frame, copy);
       gst_buffer_unref (copy);
     }
