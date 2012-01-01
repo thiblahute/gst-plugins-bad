@@ -392,6 +392,21 @@ gstspu_vobsub_clear_comp_buffers (SpuState * state)
   state->vobsub.comp_last_x[1] = -1;
 }
 
+static inline gint
+ilaced_y (SpuState * state, gint y)
+{
+  if (state->interlaced) {
+    if (y % 2) {
+      /* odd field */
+      y = (y + state->Y_height) / 2;
+    } else {
+      /* even field */
+      y = y / 2;
+    }
+  }
+  return y;
+}
+
 static void
 gstspu_vobsub_draw_highlight (SpuState * state,
     GstBuffer * buf, SpuRect *rect)
@@ -399,35 +414,112 @@ gstspu_vobsub_draw_highlight (SpuState * state,
   guint8 *cur;
   gint16 pos;
 
-  cur = GST_BUFFER_DATA (buf) + state->Y_stride * rect->top;
+  cur = GST_BUFFER_DATA (buf) + state->Y_stride *
+      ilaced_y (state, rect->top);
   for (pos = rect->left + 1; pos < rect->right; pos++)
     cur[pos] = (cur[pos] / 2) + 0x8;
-  cur = GST_BUFFER_DATA (buf) + state->Y_stride * rect->bottom;
+  cur = GST_BUFFER_DATA (buf) + state->Y_stride *
+      ilaced_y (state, rect->bottom);
   for (pos = rect->left + 1; pos < rect->right; pos++)
     cur[pos] = (cur[pos] / 2) + 0x8;
-  cur = GST_BUFFER_DATA (buf) + state->Y_stride * rect->top;
   for (pos = rect->top; pos <= rect->bottom; pos++) {
+    cur = GST_BUFFER_DATA (buf) + state->Y_stride *
+        ilaced_y (state, pos);
     cur[rect->left] = (cur[rect->left] / 2) + 0x8;
     cur[rect->right] = (cur[rect->right] / 2) + 0x8;
-    cur += state->Y_stride;
   }
+}
+
+static void
+gstspu_vobsub_render_field (SpuState * state, GstBuffer * buf,
+    gint y, gint last_y, gint y_inc,
+    guint16 * rle_offset_even, guint16 * rle_offset_odd)
+{
+  guint8 *planes[3];            /* YUV frame pointers */
+
+  /* Store the start of each plane */
+  planes[0] = GST_BUFFER_DATA (buf);
+  planes[1] = planes[0] + state->U_offset;
+  planes[2] = planes[1] + state->V_offset;
+
+  /* Update our plane references to the first line of the disp_rect */
+  planes[0] += state->Y_stride * y;
+  planes[1] += state->UV_stride * (y / 2);
+  planes[2] += state->UV_stride * (y / 2);
+
+  /* Set up HL or Change Color & Contrast rect tracking */
+  if (state->vobsub.hl_rect.top != -1) {
+    state->vobsub.cur_chg_col = &state->vobsub.hl_ctrl_i;
+    state->vobsub.cur_chg_col_end = state->vobsub.cur_chg_col + 1;
+  } else if (state->vobsub.n_line_ctrl_i > 0) {
+    state->vobsub.cur_chg_col = state->vobsub.line_ctrl_i;
+    state->vobsub.cur_chg_col_end =
+        state->vobsub.cur_chg_col + state->vobsub.n_line_ctrl_i;
+  } else
+    state->vobsub.cur_chg_col = NULL;
+
+  for (state->vobsub.cur_Y = y; state->vobsub.cur_Y <= last_y;
+      state->vobsub.cur_Y += y_inc) {
+    gboolean clip, visible = FALSE;
+
+    clip = (state->vobsub.cur_Y < state->vobsub.clip_rect.top
+        || state->vobsub.cur_Y > state->vobsub.clip_rect.bottom);
+
+    /* Reset the compositing buffer */
+    gstspu_vobsub_clear_comp_buffers (state);
+    /* Render even line */
+    state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x;
+    visible |= gstspu_vobsub_render_line (state, planes, rle_offset_even);
+
+    /* Advance the luminance output pointer */
+    planes[0] += state->Y_stride;
+
+    state->vobsub.cur_Y += y_inc;
+
+    /* Render odd line */
+    state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x + 1;
+    visible |= gstspu_vobsub_render_line (state, planes, rle_offset_odd);
+
+    if (visible && !clip) {
+      /* Blend the accumulated UV compositing buffers onto the output */
+      gstspu_vobsub_blend_comp_buffers (state, planes);
+    }
+
+    /* Update all the output pointers */
+    planes[0] += state->Y_stride;
+    planes[1] += state->UV_stride;
+    planes[2] += state->UV_stride;
+  }
+  if (state->vobsub.cur_Y == state->vobsub.disp_rect.bottom) {
+    gboolean clip, visible = FALSE;
+
+    clip = (state->vobsub.cur_Y < state->vobsub.clip_rect.top
+        || state->vobsub.cur_Y > state->vobsub.clip_rect.bottom);
+
+    g_assert ((state->vobsub.disp_rect.bottom & 0x01) == 0);
+
+    if (!clip) {
+      /* Render a remaining lone last even line. y already has the correct value
+       * after the above loop exited. */
+      gstspu_vobsub_clear_comp_buffers (state);
+      state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x;
+      visible |= gstspu_vobsub_render_line (state, planes, rle_offset_even);
+      if (visible)
+        gstspu_vobsub_blend_comp_buffers (state, planes);
+    }
+  }
+
 }
 
 void
 gstspu_vobsub_render (GstDVDSpu * dvdspu, GstBuffer * buf)
 {
   SpuState *state = &dvdspu->spu_state;
-  guint8 *planes[3];            /* YUV frame pointers */
   gint y, last_y;
 
   /* Set up our initial state */
   if (G_UNLIKELY (state->vobsub.pix_buf == NULL))
     return;
-
-  /* Store the start of each plane */
-  planes[0] = GST_BUFFER_DATA (buf);
-  planes[1] = planes[0] + state->U_offset;
-  planes[2] = planes[1] + state->V_offset;
 
   GST_DEBUG_OBJECT (dvdspu,
       "Rendering SPU. disp_rect %d,%d to %d,%d. hl_rect %d,%d to %d,%d",
@@ -446,17 +538,6 @@ gstspu_vobsub_render (GstDVDSpu * dvdspu, GstBuffer * buf)
 
   /* Update all the palette caches */
   gstspu_vobsub_update_palettes (dvdspu, state);
-
-  /* Set up HL or Change Color & Contrast rect tracking */
-  if (state->vobsub.hl_rect.top != -1) {
-    state->vobsub.cur_chg_col = &state->vobsub.hl_ctrl_i;
-    state->vobsub.cur_chg_col_end = state->vobsub.cur_chg_col + 1;
-  } else if (state->vobsub.n_line_ctrl_i > 0) {
-    state->vobsub.cur_chg_col = state->vobsub.line_ctrl_i;
-    state->vobsub.cur_chg_col_end =
-        state->vobsub.cur_chg_col + state->vobsub.n_line_ctrl_i;
-  } else
-    state->vobsub.cur_chg_col = NULL;
 
   state->vobsub.clip_rect.left = state->vobsub.disp_rect.left;
   state->vobsub.clip_rect.right = state->vobsub.disp_rect.right;
@@ -533,60 +614,14 @@ gstspu_vobsub_render (GstDVDSpu * dvdspu, GstBuffer * buf)
    * single line at the end if the display rect ends on an even line too. */
   last_y = (state->vobsub.disp_rect.bottom - 1) & ~(0x01);
 
-  /* Update our plane references to the first line of the disp_rect */
-  planes[0] += state->Y_stride * y;
-  planes[1] += state->UV_stride * (y / 2);
-  planes[2] += state->UV_stride * (y / 2);
-
-  for (state->vobsub.cur_Y = y; state->vobsub.cur_Y <= last_y;
-      state->vobsub.cur_Y++) {
-    gboolean clip, visible = FALSE;
-
-    clip = (state->vobsub.cur_Y < state->vobsub.clip_rect.top
-        || state->vobsub.cur_Y > state->vobsub.clip_rect.bottom);
-
-    /* Reset the compositing buffer */
-    gstspu_vobsub_clear_comp_buffers (state);
-    /* Render even line */
-    state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x;
-    visible |= gstspu_vobsub_render_line (state, planes, &state->vobsub.cur_offsets[0]);
-    if (!clip) {
-      /* Advance the luminance output pointer */
-      planes[0] += state->Y_stride;
-    }
-    state->vobsub.cur_Y++;
-
-    /* Render odd line */
-    state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x + 1;
-    visible |= gstspu_vobsub_render_line (state, planes, &state->vobsub.cur_offsets[1]);
-
-    if (visible && !clip) {
-      /* Blend the accumulated UV compositing buffers onto the output */
-      gstspu_vobsub_blend_comp_buffers (state, planes);
-
-      /* Update all the output pointers */
-      planes[0] += state->Y_stride;
-      planes[1] += state->UV_stride;
-      planes[2] += state->UV_stride;
-    }
-  }
-  if (state->vobsub.cur_Y == state->vobsub.disp_rect.bottom) {
-    gboolean clip, visible = FALSE;
-
-    clip = (state->vobsub.cur_Y < state->vobsub.clip_rect.top
-        || state->vobsub.cur_Y > state->vobsub.clip_rect.bottom);
-
-    g_assert ((state->vobsub.disp_rect.bottom & 0x01) == 0);
-
-    if (!clip) {
-      /* Render a remaining lone last even line. y already has the correct value
-       * after the above loop exited. */
-      gstspu_vobsub_clear_comp_buffers (state);
-      state->vobsub.comp_last_x_ptr = state->vobsub.comp_last_x;
-      visible |= gstspu_vobsub_render_line (state, planes, &state->vobsub.cur_offsets[0]);
-      if (visible)
-        gstspu_vobsub_blend_comp_buffers (state, planes);
-    }
+  if (state->interlaced) {
+    gstspu_vobsub_render_field (state, buf, y, last_y, 2,
+        &state->vobsub.cur_offsets[0], &state->vobsub.cur_offsets[0]);
+    gstspu_vobsub_render_field (state, buf, y+1, last_y, 2,
+        &state->vobsub.cur_offsets[1], &state->vobsub.cur_offsets[1]);
+  } else {
+    gstspu_vobsub_render_field (state, buf, y, last_y, 1,
+        &state->vobsub.cur_offsets[0], &state->vobsub.cur_offsets[1]);
   }
 
   /* for debugging purposes, draw a faint rectangle at the edges of the disp_rect */

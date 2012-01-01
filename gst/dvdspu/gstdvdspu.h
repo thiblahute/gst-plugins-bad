@@ -75,6 +75,7 @@ struct SpuState {
   gint16 Y_height, UV_height;
   gint32 U_offset, V_offset;
   gint8  UV_pixstride;
+  gboolean interlaced;
 
   guint32 *comp_bufs[3]; /* Compositing buffers for U+V & A */
   guint16 comp_left;

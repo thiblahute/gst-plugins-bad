@@ -320,6 +320,7 @@ gst_dvd_spu_video_set_caps (GstPad * pad, GstCaps * caps)
   gint i;
   gint fps_n, fps_d;
   guint32 format;
+  gboolean interlaced = FALSE;
   SpuState *state;
 
   s = gst_caps_get_structure (caps, 0);
@@ -331,12 +332,16 @@ gst_dvd_spu_video_set_caps (GstPad * pad, GstCaps * caps)
     goto done;
   }
 
+  /* interlaced field is optional: */
+  gst_structure_get_boolean (s, "interlaced", &interlaced);
+
   DVD_SPU_LOCK (dvdspu);
 
   state = &dvdspu->spu_state;
 
   state->fps_n = fps_n;
   state->fps_d = fps_d;
+  state->interlaced = interlaced;
 
   state->vid_height = h;
   state->Y_height = GST_ROUND_UP_2 (h);
