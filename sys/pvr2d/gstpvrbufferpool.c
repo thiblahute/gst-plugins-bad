@@ -88,6 +88,9 @@ gst_ducati_buffer_copy (GstDucatiBuffer * self)
 
   copy = gst_pvr_bufferpool_get (pool);
 
+  if (!copy)
+    copy = gst_buffer_new_and_alloc (GST_BUFFER_SIZE (self));
+
   memcpy (GST_BUFFER_DATA (copy),
       GST_BUFFER_DATA (self), GST_BUFFER_SIZE (self));
 
@@ -282,10 +285,10 @@ gst_pvr_bufferpool_get (GstPvrBufferPool * self)
     if (!buf)
       buf = gst_ducati_buffer_new (self);
     g_queue_push_head (self->used_buffers, buf);
+
+    GST_BUFFER_SIZE (buf) = self->size;
   }
   GST_PVR_BUFFERPOOL_UNLOCK (self);
-
-  GST_BUFFER_SIZE (buf) = self->size;
 
   return buf;
 }
