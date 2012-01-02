@@ -720,6 +720,10 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     draw_border = TRUE;
   }
 
+  if (!pvrvideosink->xwindow) {
+    goto done;
+  }
+
   /* Sometimes the application hasn't really given us valid dimensions
    * when we want to render the first frame, which throws pvr into a
    * tizzy, so let's just detect it and bail early:
