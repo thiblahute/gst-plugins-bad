@@ -633,12 +633,6 @@ gst_pvrvideosink_create_window (GstPVRVideoSink * pvrvideosink, gint width,
   xwindow = g_new0 (GstXWindow, 1);
 
   xwindow->internal = TRUE;
-  pvrvideosink->render_rect.x = pvrvideosink->render_rect.y = 0;
-  pvrvideosink->render_rect.w = width;
-  pvrvideosink->render_rect.h = height;
-  xwindow->width = width;
-  xwindow->height = height;
-  xwindow->internal = TRUE;
 
   g_mutex_lock (dcontext->x_lock);
 
@@ -668,6 +662,8 @@ gst_pvrvideosink_create_window (GstPVRVideoSink * pvrvideosink, gint width,
       xwindow->window, 0, &values);
 
   g_mutex_unlock (dcontext->x_lock);
+
+  gst_pvrvideosink_xwindow_update_geometry (pvrvideosink);
 
   GST_DEBUG_OBJECT (pvrvideosink, "end");
   return xwindow;
@@ -785,7 +781,14 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
     p_blt_3d->rcSource.bottom = video_height;
   }
 
-  p_blt_3d->hUseCode = NULL;
+  GST_DEBUG_OBJECT (pvrvideosink, "blit: %dx%d (%d) -> %dx%d (%d)",
+      p_blt_3d->sSrc.SurfWidth, p_blt_3d->sSrc.SurfHeight, p_blt_3d->sSrc.Stride,
+      p_blt_3d->sDst.SurfWidth, p_blt_3d->sDst.SurfHeight, p_blt_3d->sDst.Stride);
+  GST_DEBUG_OBJECT (pvrvideosink, "crop: %d,%d %d,%d -> %d,%d %d,%d",
+      p_blt_3d->rcSource.left, p_blt_3d->rcSource.top,
+      p_blt_3d->rcSource.right, p_blt_3d->rcSource.bottom,
+      p_blt_3d->rcDest.left, p_blt_3d->rcDest.top,
+      p_blt_3d->rcDest.right, p_blt_3d->rcDest.bottom);
 
   if (pvrvideosink->format == GST_VIDEO_FORMAT_NV12)
     p_blt_3d->bDisableDestInput = TRUE;
@@ -1125,9 +1128,6 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
     pvrvideosink->xwindow = gst_pvrvideosink_create_window (pvrvideosink,
         GST_VIDEO_SINK_WIDTH (pvrvideosink),
         GST_VIDEO_SINK_HEIGHT (pvrvideosink));
-
-  pvr_recreate_drawable (pvrvideosink);
-  pvr_get_drawable_params (pvrvideosink);
 
   g_mutex_unlock (pvrvideosink->flow_lock);
 
