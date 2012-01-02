@@ -59,8 +59,6 @@ struct _GstDrawContext
   /* PVR2D */
   PVR2DCONTEXTHANDLE pvr_context;
   PVR2DMEMINFO dst_mem;
-  PPVR2D_3DBLT_EXT p_blt_info;
-  PPVR2DBLTINFO p_blt2d_info;
 
   long stride;
   PVR2DFORMAT display_format;
