@@ -1575,7 +1575,7 @@ gst_h264_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
   gst_h264_parse_format_from_caps (caps, &format, &align);
 
   /* packetized video has a codec_data */
-  if (format != GST_H264_PARSE_FORMAT_BYTE &&
+  if (format == GST_H264_PARSE_FORMAT_AVC &&
       (value = gst_structure_get_value (str, "codec_data"))) {
     guint8 *data;
     guint num_sps, num_pps, profile;
@@ -1594,6 +1594,7 @@ gst_h264_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
     /* parse the avcC data */
     if (size < 8)
       goto avcc_too_small;
+
     /* parse the version, this must be 1 */
     if (data[0] != 1)
       goto wrong_version;
