@@ -318,26 +318,21 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
 
     self->vfsrc_filter = gst_element_factory_make ("capsfilter",
         "vfsrc-capsfilter");
-    caps = gst_caps_from_string ("video/x-raw-yuv-strided");
+    caps = gst_caps_from_string ("video/x-raw-yuv");
     g_object_set (self->vfsrc_filter, "caps", caps, NULL);
     gst_caps_unref (caps);
 
     self->vidsrc_filter = gst_element_factory_make ("capsfilter",
         "vidsrc-capsfilter");
-    caps = gst_caps_from_string ("video/x-raw-yuv-strided");
+    caps = gst_caps_from_string ("video/x-raw-yuv");
     g_object_set (self->vidsrc_filter, "caps", caps, NULL);
     gst_caps_unref (caps);
 
-    self->vfsrc_stride =
-        gst_element_factory_make ("stridetransform", "vfsrc-stride");
-    self->vidsrc_stride =
-        gst_element_factory_make ("stridetransform", "vidsrc-stride");
     self->imgsrc_stride =
         gst_element_factory_make ("identity", "imgsrc-stride");
 
     gst_bin_add_many (cbin, self->video_source, self->tee,
-        self->vfsrc_filter, self->vfsrc_stride, self->vidsrc_filter,
-        self->vidsrc_stride, self->imgsrc_stride, NULL);
+        self->vfsrc_filter, self->vidsrc_filter, self->imgsrc_stride, NULL);
 
     gst_bin_add (cbin, self->source_filter);
     if (!gst_element_link_pads (self->video_source, "src",
@@ -357,13 +352,7 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
     if (!gst_element_link_pads (self->tee, "src0", self->vfsrc_filter, "sink"))
       goto link_error;
 
-    if (!gst_element_link (self->vfsrc_filter, self->vfsrc_stride))
-      goto link_error;
-
     if (!gst_element_link_pads (self->tee, "src1", self->vidsrc_filter, "sink"))
-      goto link_error;
-
-    if (!gst_element_link (self->vidsrc_filter, self->vidsrc_stride))
       goto link_error;
 
     if (!gst_element_link_pads (self->video_source, "imgsrc",
@@ -375,11 +364,11 @@ gst_omx_camera_bin_src_construct_pipeline (GstBaseCameraBinSrc * bcamsrc)
         G_CALLBACK (gst_omx_camera_bin_src_imgsrc_probe), self);
     gst_object_unref (pad);
 
-    pad = gst_element_get_static_pad (self->vfsrc_stride, "src");
+    pad = gst_element_get_static_pad (self->vfsrc_filter, "src");
     gst_ghost_pad_set_target (GST_GHOST_PAD (self->vfsrc), pad);
     gst_object_unref (pad);
 
-    pad = gst_element_get_static_pad (self->vidsrc_stride, "src");
+    pad = gst_element_get_static_pad (self->vidsrc_filter, "src");
     gst_ghost_pad_set_target (GST_GHOST_PAD (self->vidsrc), pad);
     gst_object_unref (pad);
 
