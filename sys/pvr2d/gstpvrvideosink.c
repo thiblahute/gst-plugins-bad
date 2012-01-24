@@ -1813,6 +1813,7 @@ gst_pvrvideosink_reset (GstPVRVideoSink * pvrvideosink)
   }
 
   g_free (pvrvideosink->display_par);
+  pvrvideosink->display_par = NULL;
   gst_pvrvideosink_dcontext_clear (pvrvideosink);
   memset (&pvrvideosink->crop, 0, sizeof (PVR2DRECT));
 }
@@ -1863,6 +1864,7 @@ gst_pvrvideosink_init (GstPVRVideoSink * pvrvideosink)
   pvrvideosink->redraw_borders = TRUE;
   pvrvideosink->current_buffer = NULL;
   pvrvideosink->event_thread = NULL;
+  pvrvideosink->display_par = NULL;
   memset (&pvrvideosink->render_params, 0, sizeof (WSEGLDrawableParams));
   memset (&pvrvideosink->crop, 0, sizeof (PVR2DRECT));
 }
