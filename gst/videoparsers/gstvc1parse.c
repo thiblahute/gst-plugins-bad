@@ -87,6 +87,8 @@
 GST_DEBUG_CATEGORY (vc1_parse_debug);
 #define GST_CAT_DEFAULT vc1_parse_debug
 
+#define GST_BUFFER_FLAG_B_FRAME (GST_BUFFER_FLAG_LAST << 0)
+
 static const struct
 {
   gchar str[15];
@@ -958,11 +960,19 @@ gst_vc1_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       (vc1parse->seq_layer_buffer
           && vc1parse->input_stream_format ==
           VC1_STREAM_FORMAT_SEQUENCE_LAYER_RAW_FRAME)) {
+    GstVC1FrameHdr header;
+
     GST_LOG_OBJECT (vc1parse, "Have new ASF or RAW data unit");
 
     if (!vc1parse->seq_hdr_buffer && !vc1parse->seq_layer_buffer) {
       GST_ERROR_OBJECT (vc1parse, "Need a sequence header or sequence layer");
       return GST_FLOW_ERROR;
+    }
+
+    if (gst_vc1_parse_frame_header (data, size, &header,
+            &vc1parse->seq_hdr, NULL) == GST_VC1_PARSER_OK) {
+      if (header.ptype == GST_VC1_PICTURE_TYPE_B)
+        GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_B_FRAME);
     }
 
     /* Might be multiple BDUs here, complex... */
