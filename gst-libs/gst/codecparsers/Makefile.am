@@ -10,7 +10,8 @@ libgstcodecparsers_@GST_MAJORMINOR@includedir = \
 noinst_HEADERS = parserutils.h
 
 libgstcodecparsers_@GST_MAJORMINOR@include_HEADERS = \
-	gstmpegvideoparser.h gsth264parser.h gstvc1parser.h gstmpeg4parser.h
+	gstmpegvideoparser.h gsth264parser.h gstvc1parser.h gstmpeg4parser.h \
+	parserutils.h
 
 libgstcodecparsers_@GST_MAJORMINOR@_la_CFLAGS = \
 	$(GST_PLUGINS_BAD_CFLAGS) \
