@@ -306,7 +306,7 @@ gst_pvrvideosink_xwindow_update_geometry (GstPVRVideoSink * pvrvideosink)
     g_mutex_unlock (pvrvideosink->dcontext->x_lock);
     return;
   }
-  pvrvideosink->redraw_borders = TRUE;
+  pvrvideosink->redraw_borders = 2;
 
   XGetWindowAttributes (pvrvideosink->dcontext->x_display,
       pvrvideosink->xwindow->window, &attr);
@@ -834,7 +834,9 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   if (draw_border) {
     gst_pvrvideosink_xwindow_draw_borders (pvrvideosink, pvrvideosink->xwindow,
         result);
-    pvrvideosink->redraw_borders = FALSE;
+    pvrvideosink->redraw_borders--;
+    if (pvrvideosink->redraw_borders < 0)
+      pvrvideosink->redraw_borders = 0;
   } else {
     pvr_swap_buffers (pvrvideosink);
   }
@@ -1857,7 +1859,7 @@ gst_pvrvideosink_init (GstPVRVideoSink * pvrvideosink)
   pvrvideosink->min_queued_bufs = DEFAULT_MIN_QUEUED_BUFS;
   pvrvideosink->dcontext = NULL;
   pvrvideosink->xwindow = NULL;
-  pvrvideosink->redraw_borders = TRUE;
+  pvrvideosink->redraw_borders = 2;
   pvrvideosink->current_buffer = NULL;
   pvrvideosink->event_thread = NULL;
   pvrvideosink->display_par = NULL;

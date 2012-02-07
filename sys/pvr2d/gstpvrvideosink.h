@@ -151,7 +151,7 @@ struct _GstPVRVideoSink
   gint display_par_d;
 
   gchar *media_title;
-  gboolean redraw_borders;
+  gint redraw_borders;
   GstBuffer *current_buffer;
   PVR2DRECT crop;
   WSEGLDrawableParams render_params;
