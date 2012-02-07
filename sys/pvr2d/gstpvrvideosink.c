@@ -129,29 +129,29 @@ pvr2dstrerr (PVR2DERROR err)
 }
 
 static const char *
-wseglstrerr(WSEGLError err)
+wseglstrerr (WSEGLError err)
 {
   switch (err) {
-  case WSEGL_SUCCESS:
-    return "Ok";
-  case WSEGL_CANNOT_INITIALISE:
-    return "Cannot initialize";
-  case WSEGL_BAD_NATIVE_DISPLAY:
-    return "Bad native display";
-  case WSEGL_BAD_NATIVE_WINDOW:
-    return "Bad native window";
-  case WSEGL_BAD_NATIVE_PIXMAP:
-    return "Bad native pixmap";
-  case WSEGL_BAD_NATIVE_ENGINE:
-    return "Bad native engine";
-  case WSEGL_BAD_DRAWABLE:
-    return "Bad drawable";
-  case WSEGL_BAD_MATCH:
-    return "Bad match";
-  case WSEGL_OUT_OF_MEMORY:
-    return "Out of memory";
-  default:
-    return "Unknown error";
+    case WSEGL_SUCCESS:
+      return "Ok";
+    case WSEGL_CANNOT_INITIALISE:
+      return "Cannot initialize";
+    case WSEGL_BAD_NATIVE_DISPLAY:
+      return "Bad native display";
+    case WSEGL_BAD_NATIVE_WINDOW:
+      return "Bad native window";
+    case WSEGL_BAD_NATIVE_PIXMAP:
+      return "Bad native pixmap";
+    case WSEGL_BAD_NATIVE_ENGINE:
+      return "Bad native engine";
+    case WSEGL_BAD_DRAWABLE:
+      return "Bad drawable";
+    case WSEGL_BAD_MATCH:
+      return "Bad match";
+    case WSEGL_OUT_OF_MEMORY:
+      return "Out of memory";
+    default:
+      return "Unknown error";
   }
 }
 
@@ -214,23 +214,24 @@ pvr_recreate_drawable (GstPVRVideoSink * pvrvideosink)
   GstDrawContext *dcontext = pvrvideosink->dcontext;
 
   if (dcontext->drawable_handle) {
-    glerror = dcontext->wsegl_table->pfnWSEGL_DeleteDrawable (
-        dcontext->drawable_handle);
+    glerror =
+        dcontext->wsegl_table->
+        pfnWSEGL_DeleteDrawable (dcontext->drawable_handle);
     if (glerror) {
       GST_ERROR_OBJECT (pvrvideosink, "error deleting drawable: %s",
-          wseglstrerr(glerror));
+          wseglstrerr (glerror));
       return;
     }
   }
 
-  glerror = dcontext->wsegl_table->pfnWSEGL_CreateWindowDrawable (
-      dcontext->display_handle, dcontext->glconfig,
-      &dcontext->drawable_handle,
-      (NativeWindowType) pvrvideosink->xwindow->window,
-      &dcontext->rotation);
+  glerror =
+      dcontext->wsegl_table->
+      pfnWSEGL_CreateWindowDrawable (dcontext->display_handle,
+      dcontext->glconfig, &dcontext->drawable_handle,
+      (NativeWindowType) pvrvideosink->xwindow->window, &dcontext->rotation);
   if (glerror) {
     GST_ERROR_OBJECT (pvrvideosink, "error creating drawable: %s",
-        wseglstrerr(glerror));
+        wseglstrerr (glerror));
   }
 }
 
@@ -242,9 +243,10 @@ pvr_get_drawable_params (GstPVRVideoSink * pvrvideosink)
   PVRSRV_CLIENT_MEM_INFO *client_mem_info;
   GstDrawContext *dcontext = pvrvideosink->dcontext;
 
-  glerror = dcontext->wsegl_table->pfnWSEGL_GetDrawableParameters (
-          dcontext->drawable_handle, &source_params,
-          &pvrvideosink->render_params);
+  glerror =
+      dcontext->wsegl_table->
+      pfnWSEGL_GetDrawableParameters (dcontext->drawable_handle, &source_params,
+      &pvrvideosink->render_params);
 
   if (glerror == WSEGL_BAD_DRAWABLE) {
     /* this can happen if window size changes, window is redirected/
@@ -258,7 +260,7 @@ pvr_get_drawable_params (GstPVRVideoSink * pvrvideosink)
   }
 
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr(glerror));
+    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr (glerror));
   }
 
   client_mem_info =
@@ -289,7 +291,7 @@ pvr_query_blits_complete (GstPVRVideoSink * pvrvideosink)
 
   if (pvr_error) {
     GST_ERROR_OBJECT (pvrvideosink, "%s (%d)",
-        pvr2dstrerr(pvr_error), pvr_error);
+        pvr2dstrerr (pvr_error), pvr_error);
   }
 }
 
@@ -370,11 +372,10 @@ gst_pvrvideosink_handle_xevents (GstPVRVideoSink * pvrvideosink)
 
   /* Then handle all the other events: */
   while (XCheckWindowEvent (pvrvideosink->dcontext->x_display,
-      pvrvideosink->xwindow->window,
-      ExposureMask | StructureNotifyMask |
-      KeyPressMask | KeyReleaseMask |
-      ButtonPressMask | ButtonReleaseMask,
-      &e)) {
+          pvrvideosink->xwindow->window,
+          ExposureMask | StructureNotifyMask |
+          KeyPressMask | KeyReleaseMask |
+          ButtonPressMask | ButtonReleaseMask, &e)) {
     KeySym keysym;
     const char *key_str = NULL;
 
@@ -393,16 +394,14 @@ gst_pvrvideosink_handle_xevents (GstPVRVideoSink * pvrvideosink)
             "button %d pressed over window at %d,%d",
             e.xbutton.button, e.xbutton.x, e.xbutton.y);
         gst_navigation_send_mouse_event (GST_NAVIGATION (pvrvideosink),
-            "mouse-button-press", e.xbutton.button,
-            e.xbutton.x, e.xbutton.y);
+            "mouse-button-press", e.xbutton.button, e.xbutton.x, e.xbutton.y);
         break;
       case ButtonRelease:
         GST_DEBUG_OBJECT (pvrvideosink,
-            "button %d released over window at %d,%d",
-            e.xbutton.button, e.xbutton.x, e.xbutton.y);
-        gst_navigation_send_mouse_event (GST_NAVIGATION (pvrvideosink),
-            "mouse-button-release", e.xbutton.button,
+            "button %d released over window at %d,%d", e.xbutton.button,
             e.xbutton.x, e.xbutton.y);
+        gst_navigation_send_mouse_event (GST_NAVIGATION (pvrvideosink),
+            "mouse-button-release", e.xbutton.button, e.xbutton.x, e.xbutton.y);
         break;
       case KeyPress:
       case KeyRelease:
@@ -536,7 +535,7 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
       (NativeDisplayType) dcontext->x_display);
 
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr(glerror));
+    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr (glerror));
     return NULL;
   }
 
@@ -544,7 +543,7 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
       (NativeDisplayType) dcontext->x_display, &dcontext->display_handle,
       &glcaps, &dcontext->glconfig);
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr(glerror));
+    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr (glerror));
     return NULL;
   }
 
@@ -642,8 +641,7 @@ gst_pvrvideosink_create_window (GstPVRVideoSink * pvrvideosink, gint width,
 
   /* Tell the window manager we'd like delete client messages instead of
    * being killed */
-  wm_delete = XInternAtom (dcontext->x_display,
-      "WM_DELETE_WINDOW", True);
+  wm_delete = XInternAtom (dcontext->x_display, "WM_DELETE_WINDOW", True);
   if (wm_delete != None) {
     (void) XSetWMProtocols (dcontext->x_display, xwindow->window,
         &wm_delete, 1);
@@ -653,13 +651,11 @@ gst_pvrvideosink_create_window (GstPVRVideoSink * pvrvideosink, gint width,
 
   /* We have to do that to prevent X from redrawing the background on
    * ConfigureNotify. This takes away flickering of video when resizing. */
-  XSetWindowBackgroundPixmap (dcontext->x_display,
-      xwindow->window, None);
+  XSetWindowBackgroundPixmap (dcontext->x_display, xwindow->window, None);
 
   gst_pvrvideosink_xwindow_set_title (pvrvideosink, xwindow, NULL);
 
-  xwindow->gc = XCreateGC (dcontext->x_display,
-      xwindow->window, 0, &values);
+  xwindow->gc = XCreateGC (dcontext->x_display, xwindow->window, 0, &values);
 
   g_mutex_unlock (dcontext->x_lock);
 
@@ -677,7 +673,7 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   gint video_width;
   gint video_height;
   gboolean draw_border = FALSE;
-  PVR2D_3DBLT_EXT s_blt_3d = {};
+  PVR2D_3DBLT_EXT s_blt_3d = { };
   PPVR2D_3DBLT_EXT p_blt_3d;
   PVR2DMEMINFO *src_mem;
   PVR2DFORMAT pvr_format = pvrvideosink->format == GST_VIDEO_FORMAT_NV12 ?
@@ -782,8 +778,9 @@ gst_pvrvideosink_blit (GstPVRVideoSink * pvrvideosink, GstBuffer * buffer)
   }
 
   GST_DEBUG_OBJECT (pvrvideosink, "blit: %dx%d (%d) -> %dx%d (%d)",
-      p_blt_3d->sSrc.SurfWidth, p_blt_3d->sSrc.SurfHeight, p_blt_3d->sSrc.Stride,
-      p_blt_3d->sDst.SurfWidth, p_blt_3d->sDst.SurfHeight, p_blt_3d->sDst.Stride);
+      p_blt_3d->sSrc.SurfWidth, p_blt_3d->sSrc.SurfHeight,
+      p_blt_3d->sSrc.Stride, p_blt_3d->sDst.SurfWidth,
+      p_blt_3d->sDst.SurfHeight, p_blt_3d->sDst.Stride);
   GST_DEBUG_OBJECT (pvrvideosink, "crop: %d,%d %d,%d -> %d,%d %d,%d",
       p_blt_3d->rcSource.left, p_blt_3d->rcSource.top,
       p_blt_3d->rcSource.right, p_blt_3d->rcSource.bottom,
@@ -872,7 +869,7 @@ gst_pvrvideosink_pvrfill_rectangle (GstPVRVideoSink * pvrvideosink,
     GstVideoRectangle rect)
 {
   PVR2DERROR pvr_error;
-  PVR2DBLTINFO s_blt2d_info = {0};
+  PVR2DBLTINFO s_blt2d_info = { 0 };
   PPVR2DBLTINFO p_blt2d_info;
   GstDrawContext *dcontext = pvrvideosink->dcontext;
 
@@ -1438,8 +1435,7 @@ static gboolean
 gst_pvrvideosink_interface_supported (GstImplementsInterface * iface,
     GType type)
 {
-  if (type == GST_TYPE_X_OVERLAY ||
-      type == GST_TYPE_NAVIGATION)
+  if (type == GST_TYPE_X_OVERLAY || type == GST_TYPE_NAVIGATION)
     return TRUE;
   else
     return FALSE;
@@ -1647,12 +1643,12 @@ gst_pvrvideosink_send_event (GstNavigation * navigation,
 
     if (pvrvideosink->keep_aspect) {
       GstVideoRectangle src = {
-          .w = GST_VIDEO_SINK_WIDTH (pvrvideosink),
-          .h = GST_VIDEO_SINK_HEIGHT (pvrvideosink),
+        .w = GST_VIDEO_SINK_WIDTH (pvrvideosink),
+        .h = GST_VIDEO_SINK_HEIGHT (pvrvideosink),
       };
       GstVideoRectangle dst = {
-          .w = pvrvideosink->render_rect.w,
-          .h = pvrvideosink->render_rect.h,
+        .w = pvrvideosink->render_rect.w,
+        .h = pvrvideosink->render_rect.h,
       };
 
       gst_video_sink_center_rect (src, dst, &result, TRUE);
