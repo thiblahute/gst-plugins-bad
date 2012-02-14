@@ -106,6 +106,7 @@ struct _GstH264Parse
   gboolean frame_start;
   /* AU state */
   gboolean picture_start;
+  gboolean b_frame;
 
   /* props */
   gboolean split_packetized;

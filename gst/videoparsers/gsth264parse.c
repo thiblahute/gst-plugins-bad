@@ -38,6 +38,7 @@ GST_DEBUG_CATEGORY (h264_parse_debug);
 #define GST_CAT_DEFAULT h264_parse_debug
 
 #define DEFAULT_CONFIG_INTERVAL      (0)
+#define GST_BUFFER_FLAG_B_FRAME (GST_BUFFER_FLAG_LAST << 0)
 
 enum
 {
@@ -189,6 +190,7 @@ gst_h264_parse_reset_frame (GstH264Parse * h264parse)
   h264parse->sei_pos = -1;
   h264parse->keyframe = FALSE;
   h264parse->frame_start = FALSE;
+  h264parse->b_frame = FALSE;
   gst_adapter_clear (h264parse->frame_out);
 }
 
@@ -1298,6 +1300,9 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
     GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_DELTA_UNIT);
   else
     GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_DELTA_UNIT);
+
+  if (h264parse->b_frame)
+    GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_B_FRAME);
 
   /* replace with transformed AVC output if applicable */
   av = gst_adapter_available (h264parse->frame_out);
