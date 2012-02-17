@@ -1572,6 +1572,16 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
       }
       gst_caps_unref (caps);
 
+      caps =
+          gst_caps_new_simple ("audio/mpeg", "mpegversion", G_TYPE_INT, 4,
+          NULL);
+      if (!gst_encoding_container_profile_add_profile (prof,
+              (GstEncodingProfile *) gst_encoding_audio_profile_new (caps, NULL,
+                  NULL, 1))) {
+        GST_WARNING_OBJECT (camera, "Failed to create encoding profiles");
+      }
+      gst_caps_unref (caps);
+
       camera->video_profile = (GstEncodingProfile *) prof;
       camera->video_profile_switch = TRUE;
     }
