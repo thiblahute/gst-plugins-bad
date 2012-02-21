@@ -17,19 +17,12 @@ tsdemux/tsparse TODO
   => Split out in a separate file/object. It is polluting tsdemux for
   code readability/clarity.
 
-* Perfomance : Creation/Destruction of buffers is slow
-  * => This is due to g_type_instance_create using a dogslow rwlock
-  which take up to 50% of gst_adapter_take_buffer()
-  => Bugzilla #585375 (performance and contention problems)
-
 * mpegtspacketizer
   * offset/timestamp of incoming buffers need to be carried on to the
   sub-buffers in order for several demuxer features to work correctly.
 
 * mpegtsparser
   * SERIOUS room for improvement performance-wise (see callgrind)
-
-
 
 
 Synchronization, Scheduling and Timestamping
@@ -65,6 +58,19 @@ of the stream.
 
     => The outgoing buffers will be timestamped with their PTS values
        (overflow corrected) offseted by that initial DTS_delta.
+
+  ===> DONE in:
+    commit 9f1511e998f5f7c35224dfef05cce0c8083658e4
+    Author: Edward Hervey <bilboed@bilboed.com>
+    Date:   Sat Jul 16 13:44:00 2011 +0200
+
+        tsdemux: Fix newsegment creation for push mode
+
+        And all relevent comments to what it should be doing, refactor everything
+        a bit. Still not perfect ... but better.
+
+        Fixes #654657
+
 
   A latency is introduced between the time the buffer containing the
   first bit of a Access Unit is received in the demuxer and the moment
@@ -105,6 +111,14 @@ of the stream.
 
   Latency is reported just as with the live use-case.
 
+  ===> DONE in:
+    commit 4cc1dfb3603c1cafbb6c2efb0992907ced8b92ca
+    Author: Youness Alaoui <youness.alaoui@collabora.co.uk>
+    Date:   Tue Aug 16 19:54:04 2011 +0000
+
+        tsdemux: interpolate gap and fix timestamps depending on upstream segment
+
+
 
  3) Random access pull-mode
 
@@ -133,6 +147,16 @@ of the stream.
     TS  = Timestamp of the outgoing buffer
 
     ==>   TS = PTS + D
+
+  ===> DONE in:
+    commit 24408bce96e85a4788e551d250fc2aa66537cdd2
+    Author: Edward Hervey <edward.hervey@collabora.co.uk>
+    Date:   Tue Jan 10 11:37:13 2012 +0100
+
+        tsdemux: Handle rollover in PTS and DTS
+
+        Also hands back-rollover which can happen with PTS
+
 
   If seeking is handled upstream for push-based cases, whether live or
   not, no extra modification is required.
