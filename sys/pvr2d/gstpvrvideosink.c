@@ -1266,11 +1266,15 @@ gst_pvrvideosink_event (GstBaseSink * bsink, GstEvent * event)
         c->right = left + width;
       }
 
-      if (height == -1) {
+      if (height >= 0) {
+        if (pvrvideosink->current_caps) {
+          if (pvrvideosink->interlaced)
+            height *= 2;
+        }
+        c->bottom = top + height;
+      } else {
         c->bottom = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
         height = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
-      } else {
-        c->bottom = top + height;
       }
 
       structure = gst_structure_new ("video-size-crop", "width", G_TYPE_INT,
