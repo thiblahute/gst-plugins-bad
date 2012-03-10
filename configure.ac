@@ -346,6 +346,7 @@ AG_GST_CHECK_PLUGIN(jpegformat)
 AG_GST_CHECK_PLUGIN(legacyresample)
 AG_GST_CHECK_PLUGIN(librfb)
 AG_GST_CHECK_PLUGIN(liveadder)
+AG_GST_CHECK_PLUGIN(mms)
 AG_GST_CHECK_PLUGIN(mpegdemux)
 AG_GST_CHECK_PLUGIN(mpegtsdemux)
 AG_GST_CHECK_PLUGIN(mpegtsmux)
@@ -2030,6 +2031,7 @@ gst/jpegformat/Makefile
 gst/legacyresample/Makefile
 gst/librfb/Makefile
 gst/liveadder/Makefile
+gst/mms/Makefile
 gst/mpegdemux/Makefile
 gst/mpegtsdemux/Makefile
 gst/mpegtsmux/Makefile
