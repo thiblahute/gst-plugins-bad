@@ -216,7 +216,6 @@ gst_fragment_add_buffer (GstFragment * fragment, GstBuffer * buffer)
     fragment->priv->headers_set = TRUE;
 
   GST_DEBUG ("Adding new buffer to the fragment");
-  gst_buffer_ref (buffer);
   gst_buffer_list_iterator_add (fragment->priv->buffer_iterator, buffer);
   return TRUE;
 }
