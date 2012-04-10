@@ -218,8 +218,8 @@ pvr_recreate_drawable (GstPVRVideoSink * pvrvideosink)
         dcontext->wsegl_table->
         pfnWSEGL_DeleteDrawable (dcontext->drawable_handle);
     if (glerror) {
-      GST_ERROR_OBJECT (pvrvideosink, "error deleting drawable: %s",
-          wseglstrerr (glerror));
+      GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, FAILED,
+          ("error deleting drawable"), ("%s", wseglstrerr (glerror)));
       return;
     }
   }
@@ -230,8 +230,8 @@ pvr_recreate_drawable (GstPVRVideoSink * pvrvideosink)
       dcontext->glconfig, &dcontext->drawable_handle,
       (NativeWindowType) pvrvideosink->xwindow->window, &dcontext->rotation);
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "error creating drawable: %s",
-        wseglstrerr (glerror));
+    GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, FAILED,
+        ("error creating drawable"), ("%s", wseglstrerr (glerror)));
   }
 }
 
@@ -535,7 +535,8 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
       (NativeDisplayType) dcontext->x_display);
 
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr (glerror));
+    GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
+        ("Display is not valid"), ("%s", wseglstrerr (glerror)));
     return NULL;
   }
 
@@ -543,7 +544,8 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
       (NativeDisplayType) dcontext->x_display, &dcontext->display_handle,
       &glcaps, &dcontext->glconfig);
   if (glerror) {
-    GST_ERROR_OBJECT (pvrvideosink, "%s", wseglstrerr (glerror));
+    GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
+        ("Failed to initialize display"), ("%s", wseglstrerr (glerror)));
     return NULL;
   }
 
@@ -554,15 +556,15 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
       &dcontext->display_format, &dcontext->display_width,
       &dcontext->display_height, &dcontext->stride, &refresh_rate);
   if (pvr_error != PVR2D_OK) {
-    GST_ERROR_OBJECT (pvrvideosink, "Failed) to get screen mode"
-        "returned %d", pvr_error);
+    GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, READ,
+        ("Failed to get screen mode"), ("returned %d", pvr_error));
     return NULL;
   }
   pvr_error = PVR2DGetMiscDisplayInfo (dcontext->pvr_context,
       &misc_display_info);
   if (pvr_error != PVR2D_OK) {
-    GST_ERROR_OBJECT (pvrvideosink, "Failed) to get display info"
-        "returned %d", pvr_error);
+    GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, READ,
+        ("Failed to get display info"), ("returned %d", pvr_error));
     return NULL;
   }
   dcontext->physical_width = misc_display_info.ulPhysicalWidthmm;
