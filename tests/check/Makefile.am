@@ -14,7 +14,7 @@ TESTS_ENVIRONMENT = \
 	GST_PLUGIN_SYSTEM_PATH=					\
 	GST_PLUGIN_PATH=$(top_builddir)/gst:$(top_builddir)/sys:$(top_builddir)/ext:$(GST_PLUGINS_FFMPEG_DIR):$(GST_PLUGINS_UGLY_DIR):$(GST_PLUGINS_GOOD_DIR):$(GST_PLUGINS_BASE_DIR):$(GST_PLUGINS_DIR) \
 	GST_PLUGIN_LOADING_WHITELIST="gstreamer@$(GST_PLUGINS_DIR):gst-plugins-base@$(GSTPB_PLUGINS_DIR):gst-plugins-good:gst-plugins-ugly:gst-ffmpeg:gst-plugins-bad@$(top_builddir)" \
-	GST_STATE_IGNORE_ELEMENTS="apexsink camerabin camerabin2 cdaudio dc1394src \
+	GST_STATE_IGNORE_ELEMENTS="alsaspdifsink apexsink camerabin camerabin2 cdaudio dc1394src \
 	    dccpclientsrc dccpclientsink dccpserversrc dccpserversink decklinksrc \
 	    decklinksink dvbsrc dvbbasebin dfbvideosink festival gsettingsvideosrc \
 	    gsettingsvideosink gsettingsaudiosrc gsettingsaudiosink linsyssdisrc linsyssdisink nassink \
@@ -182,8 +182,9 @@ check_PROGRAMS = \
 	elements/asfmux \
 	elements/baseaudiovisualizer \
 	elements/camerabin \
-        elements/camerabin2 \
+	elements/camerabin2 \
 	elements/dataurisrc \
+	elements/imagecapturebin \
 	elements/legacyresample \
         $(check_jifmux) \
 	elements/jpegparse \
@@ -207,7 +208,9 @@ check_PROGRAMS = \
         elements/viewfinderbin \
 	$(check_zbar) \
 	$(check_orc) \
-	$(EXPERIMENTAL_CHECKS)
+	$(EXPERIMENTAL_CHECKS) \
+	pipelines/tagschecking \
+	elements/viewfinderbin
 
 noinst_HEADERS = elements/mxfdemux.h
 

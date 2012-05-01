@@ -516,20 +516,27 @@ gst_camera_bin_src_notify_readyforcapture (GObject * obj, GParamSpec * pspec,
     gchar *location = NULL;
 
     if (camera->mode == MODE_VIDEO) {
-      /* a video recording is about to start, change the filesink location */
+      /* a video recording is about to start, we reset the videobin to clear eos/flushing state
+       * also need to clean the queue ! capsfilter before it */
+      gst_element_set_state (camera->video_encodebin, GST_STATE_NULL);
       gst_element_set_state (camera->videosink, GST_STATE_NULL);
       location = g_strdup_printf (camera->location, camera->capture_index);
       GST_DEBUG_OBJECT (camera, "Switching videobin location to %s", location);
       g_object_set (camera->videosink, "location", location, NULL);
       g_free (location);
-      if (gst_element_set_state (camera->videosink, GST_STATE_PLAYING) ==
-          GST_STATE_CHANGE_FAILURE) {
-        /* Resets the latest state change return, that would be a failure
-         * and could cause problems in a camerabin2 state change */
-        gst_element_set_state (camera->videosink, GST_STATE_NULL);
-      }
+      gst_element_set_state (camera->video_encodebin, GST_STATE_PLAYING);
+      gst_element_set_state (camera->videosink, GST_STATE_PLAYING);
+      gst_element_set_state (camera->videobin_capsfilter, GST_STATE_PLAYING);
+    } else if (camera->mode == MODE_IMAGE) {
+      gst_element_set_state (camera->image_encodebin, GST_STATE_NULL);
+      gst_element_set_state (camera->imagesink, GST_STATE_NULL);
+      gst_element_set_state (camera->imagebin_capsfilter, GST_STATE_NULL);
+      GST_DEBUG_OBJECT (camera, "Switching imagebin location to %s", location);
+      g_object_set (camera->imagesink, "location", camera->location, NULL);
+      gst_element_set_state (camera->image_encodebin, GST_STATE_PLAYING);
+      gst_element_set_state (camera->imagesink, GST_STATE_PLAYING);
+      gst_element_set_state (camera->imagebin_capsfilter, GST_STATE_PLAYING);
     }
-
     camera->capture_index++;
   }
 }
@@ -830,7 +837,6 @@ gst_camera_bin_class_init (GstCameraBin2Class * klass)
           "The GstEncodingProfile to use for image captures.",
           GST_TYPE_ENCODING_PROFILE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
 
   g_object_class_install_property (object_class, PROP_IDLE,
       g_param_spec_boolean ("idle", "Idle",
@@ -1298,6 +1304,8 @@ gst_camera_bin_link_encodebin (GstCameraBin2 * camera, GstElement * encodebin,
   GstPad *sinkpad = NULL;
 
   srcpad = gst_element_get_static_pad (element, "src");
+  sinkpad = encodebin_find_pad (camera, encodebin, padtype);
+
   g_assert (srcpad != NULL);
 
   sinkpad = encodebin_find_pad (camera, encodebin, padtype);
@@ -1536,25 +1544,21 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
 
     if (camera->video_profile == NULL) {
       GstEncodingContainerProfile *prof;
+      GstEncodingVideoProfile *video_prof;
       GstCaps *caps;
 
-      caps = gst_caps_new_simple ("application/ogg", NULL);
-      prof = gst_encoding_container_profile_new ("ogg", "theora+vorbis+ogg",
+      caps = gst_caps_new_simple ("video/x-msvideo", NULL);
+      prof = gst_encoding_container_profile_new ("avi", "mpeg4+avi",
           caps, NULL);
       gst_caps_unref (caps);
 
-      caps = gst_caps_new_simple ("video/x-theora", NULL);
+      caps = gst_caps_new_simple ("video/mpeg",
+          "mpegversion", G_TYPE_INT, 4,
+          "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+      video_prof = gst_encoding_video_profile_new (caps, NULL, NULL, 1);
+      gst_encoding_video_profile_set_variableframerate (video_prof, TRUE);
       if (!gst_encoding_container_profile_add_profile (prof,
-              (GstEncodingProfile *) gst_encoding_video_profile_new (caps,
-                  NULL, NULL, 1))) {
-        GST_WARNING_OBJECT (camera, "Failed to create encoding profiles");
-      }
-      gst_caps_unref (caps);
-
-      caps = gst_caps_new_simple ("audio/x-vorbis", NULL);
-      if (!gst_encoding_container_profile_add_profile (prof,
-              (GstEncodingProfile *) gst_encoding_audio_profile_new (caps,
-                  NULL, NULL, 1))) {
+              (GstEncodingProfile *) video_prof)) {
         GST_WARNING_OBJECT (camera, "Failed to create encoding profiles");
       }
       gst_caps_unref (caps);
@@ -1569,6 +1573,7 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
       missing_element_name = "encodebin";
       goto missing_element;
     }
+
     /* durations have no meaning for image captures */
     g_object_set (camera->image_encodebin, "queue-time-max", (guint64) 0, NULL);
 
@@ -1586,14 +1591,13 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
         NULL);
 
     if (camera->image_profile == NULL) {
-      GstEncodingContainerProfile *prof;
+      GstEncodingVideoProfile *prof;
       GstEncodingVideoProfile *vprof;
       GstCaps *caps;
 
       caps = gst_caps_new_simple ("image/jpeg", NULL);
       vprof = gst_encoding_video_profile_new (caps, NULL, NULL, 1);
       gst_encoding_video_profile_set_variableframerate (vprof, TRUE);
-
       prof = gst_encoding_container_profile_new ("jpeg", "jpeg container", caps,
           NULL);
       gst_encoding_container_profile_add_profile (prof,
@@ -1654,7 +1658,6 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
      */
     gst_element_set_locked_state (camera->videosink, TRUE);
     gst_element_set_locked_state (camera->imagesink, TRUE);
-
     g_object_set (camera->videosink, "location", camera->location, NULL);
     g_object_set (camera->imagesink, "location", camera->location, NULL);
   }
@@ -1721,8 +1724,7 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
     if (camera->user_src) {
       camera->src = gst_object_ref (camera->user_src);
     } else {
-      camera->src =
-          gst_element_factory_make ("wrappercamerabinsrc", "camerasrc");
+      camera->src = gst_element_factory_make ("omxcamerabinsrc", "camerasrc");
     }
 
     new_src = TRUE;
@@ -1911,6 +1913,10 @@ gst_camera_bin_change_state (GstElement * element, GstStateChange trans)
 
   switch (trans) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
+      if (GST_STATE (camera->videosink) >= GST_STATE_PAUSED)
+        gst_element_set_state (camera->videosink, GST_STATE_READY);
+      if (GST_STATE (camera->imagesink) >= GST_STATE_PAUSED)
+        gst_element_set_state (camera->imagesink, GST_STATE_READY);
       if (camera->audio_src && GST_STATE (camera->audio_src) >= GST_STATE_READY)
         gst_element_set_state (camera->audio_src, GST_STATE_READY);
 
@@ -1940,6 +1946,8 @@ gst_camera_bin_change_state (GstElement * element, GstStateChange trans)
       gst_element_set_state (camera->audio_capsfilter, GST_STATE_READY);
       break;
     case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_element_set_state (camera->videosink, GST_STATE_NULL);
+      gst_element_set_state (camera->imagesink, GST_STATE_NULL);
       if (camera->audio_src)
         gst_element_set_state (camera->audio_src, GST_STATE_NULL);
 

@@ -25,6 +25,7 @@
 
 #include "gstviewfinderbin.h"
 #include "gstwrappercamerabinsrc.h"
+#include "gstomxcamerabinsrc.h"
 #include "gstcamerabin2.h"
 
 static gboolean
@@ -33,6 +34,8 @@ plugin_init (GstPlugin * plugin)
   if (!gst_viewfinder_bin_plugin_init (plugin))
     return FALSE;
   if (!gst_wrapper_camera_bin_src_plugin_init (plugin))
+    return FALSE;
+  if (!gst_omx_camera_bin_src_plugin_init (plugin))
     return FALSE;
   if (!gst_camera_bin2_plugin_init (plugin))
     return FALSE;

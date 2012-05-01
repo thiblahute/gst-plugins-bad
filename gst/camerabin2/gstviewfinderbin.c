@@ -57,7 +57,7 @@ enum
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("video/x-raw-yuv; video/x-raw-rgb")
+    GST_STATIC_CAPS ("video/x-raw-yuv-strided; video/x-raw-rgb")
     );
 
 /* class initialization */
@@ -100,8 +100,7 @@ gst_viewfinder_bin_base_init (gpointer g_class)
 {
   GstElementClass *element_class = GST_ELEMENT_CLASS (g_class);
 
-  gst_element_class_add_static_pad_template (element_class,
-      &sink_template);
+  gst_element_class_add_static_pad_template (element_class, &sink_template);
 
   gst_element_class_set_details_simple (element_class, "Viewfinder Bin",
       "Sink/Video", "Viewfinder Bin used in camerabin2",
@@ -206,16 +205,16 @@ gst_viewfinder_bin_create_elements (GstViewfinderBin * vfbin)
     gst_ghost_pad_set_target (GST_GHOST_PAD (vfbin->ghostpad), NULL);
 
     /* add the elements, user wants them */
-    csp = gst_element_factory_make ("ffmpegcolorspace", "vfbin-csp");
+    csp = gst_element_factory_make ("identity", "vfbin-csp");
     if (!csp) {
-      missing_element_name = "ffmpegcolorspace";
+      missing_element_name = "identity";
       goto missing_element;
     }
     gst_bin_add (GST_BIN_CAST (vfbin), csp);
 
-    videoscale = gst_element_factory_make ("videoscale", "vfbin->videoscale");
+    videoscale = gst_element_factory_make ("identity", "vfbin->videoscale");
     if (!videoscale) {
-      missing_element_name = "videoscale";
+      missing_element_name = "identity";
       goto missing_element;
     }
     gst_bin_add (GST_BIN_CAST (vfbin), videoscale);

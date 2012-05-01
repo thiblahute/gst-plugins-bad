@@ -251,8 +251,8 @@ static gint color_mode = COLOR_TONE_MODE_NONE;
 
 static gchar *viewfinder_filter = NULL;
 
-static int x_width = 320;
-static int x_height = 240;
+static int x_width = 864;
+static int x_height = 480;
 
 /* test configuration for common callbacks */
 static GString *filename = NULL;
@@ -600,6 +600,20 @@ setup_pipeline_element (GstElement * element, const gchar * property_name,
 
     elem = gst_parse_launch (element_name, &error);
     if (elem) {
+      if (g_object_class_find_property (G_OBJECT_GET_CLASS (elem), "device")) {
+        g_object_set (elem, "device", "/dev/video1", NULL);
+      }
+      if (g_object_class_find_property (G_OBJECT_GET_CLASS (elem),
+              "queue-size")) {
+        g_object_set (elem, "queue-size", 15, NULL);
+      }
+      if (g_object_class_find_property (G_OBJECT_GET_CLASS (elem), "sync")) {
+        g_object_set (elem, "sync", FALSE, NULL);
+      }
+      if (g_object_class_find_property (G_OBJECT_GET_CLASS (elem),
+              "enable-last-buffer")) {
+        g_object_set (elem, "enable-last-buffer", FALSE, NULL);
+      }
       g_object_set (element, property_name, elem, NULL);
     } else {
       GST_WARNING ("can't create element '%s' for property '%s'", element_name,
@@ -666,6 +680,7 @@ setup_pipeline (void)
   gboolean res = TRUE;
   GstBus *bus;
   GstElement *sink = NULL, *ipp = NULL;
+  GstElement *stride;
   GstEncodingProfile *prof = NULL;
 
   initial_time = gst_util_get_timestamp ();
@@ -675,6 +690,9 @@ setup_pipeline (void)
     g_warning ("can't create camerabin element\n");
     goto error;
   }
+
+  stride = gst_element_factory_make ("stridetransform", "capsfilter-stride");
+  g_object_set (camerabin, "preview-filter", stride, NULL);
 
   bus = gst_pipeline_get_bus (GST_PIPELINE (camerabin));
   /* Add sync handler for time critical messages that need to be handled fast */
@@ -733,20 +751,10 @@ setup_pipeline (void)
 
   GST_INFO_OBJECT (camerabin, "elements created");
 
-  if (sink) {
+#if 0
+  if (sink)
     g_object_set (sink, "sync", TRUE, NULL);
-  } else {
-    /* Get the inner viewfinder sink, this uses fixed names given
-     * by default in camerabin2 */
-    sink = gst_bin_get_by_name (GST_BIN (camerabin), "vf-bin");
-    g_assert (sink);
-    gst_object_unref (sink);
-
-    sink = gst_bin_get_by_name (GST_BIN (sink), "vfbin-sink");
-    g_assert (sink);
-    gst_object_unref (sink);
-  }
-  viewfinder_sink = sink;
+#endif
 
   GST_INFO_OBJECT (camerabin, "elements configured");
 
@@ -765,30 +773,31 @@ setup_pipeline (void)
                 "height", G_TYPE_INT, image_height,
                 "framerate", GST_TYPE_FRACTION, view_framerate_num,
                 view_framerate_den, NULL), NULL);
-      else
-        caps = gst_caps_new_full (gst_structure_new ("video/x-raw-yuv",
+      else {
+        caps = gst_caps_new_full (gst_structure_new ("video/x-raw-yuv-strided",
                 "width", G_TYPE_INT, image_width,
                 "height", G_TYPE_INT, image_height, NULL),
             gst_structure_new ("video/x-raw-rgb",
                 "width", G_TYPE_INT, image_width,
                 "height", G_TYPE_INT, image_height, NULL), NULL);
+      }
 
-      g_object_set (camerabin, "video-capture-caps", caps, NULL);
+      //g_object_set (camerabin, "video-capture-caps", caps, NULL);
+      g_object_set (camerabin, "viewfinder-caps", caps, NULL);
       gst_caps_unref (caps);
     } else {
-      GstCaps *caps = gst_caps_new_full (gst_structure_new ("video/x-raw-yuv",
+      GstCaps *caps = gst_caps_new_full (gst_structure_new ("image/jpeg",
               "width", G_TYPE_INT, image_width,
               "height", G_TYPE_INT, image_height, NULL),
-          gst_structure_new ("video/x-raw-rgb",
-              "width", G_TYPE_INT, image_width,
-              "height", G_TYPE_INT, image_height, NULL), NULL);
-
+          NULL);
       g_object_set (camerabin, "image-capture-caps", caps, NULL);
       gst_caps_unref (caps);
     }
   }
 
   set_camerabin2_caps_from_string ();
+
+  g_object_set (camerabin, "mode", mode, NULL);
 
   /* change to the wrong mode if timestamping if performance mode is on so
    * we can change it back and measure the time after in playing */
@@ -1210,13 +1219,13 @@ main (int argc, char *argv[])
     {"view-framerate-den", '\0', 0, G_OPTION_ARG_INT, &view_framerate_den,
         "Framerate denominator for viewfinder", NULL},
     {"preview-caps", '\0', 0, G_OPTION_ARG_STRING, &preview_caps_name,
-        "Preview caps (e.g. video/x-raw-rgb,width=320,height=240)", NULL},
+        "Preview caps (e.g. video/x-raw-rgb,width=864,height=480)", NULL},
     {"viewfinder-filter", '\0', 0, G_OPTION_ARG_STRING, &viewfinder_filter,
         "Filter to process all frames going to viewfinder sink", NULL},
     {"x-width", '\0', 0, G_OPTION_ARG_INT, &x_width,
-        "X window width (default = 320)", NULL},
+        "X window width (default = 864)", NULL},
     {"x-height", '\0', 0, G_OPTION_ARG_INT, &x_height,
-        "X window height (default = 240)", NULL},
+        "X window height (default = 480)", NULL},
     {"no-xwindow", '\0', 0, G_OPTION_ARG_NONE, &no_xwindow,
         "Do not create XWindow", NULL},
     {"encoding-target", '\0', 0, G_OPTION_ARG_STRING, &gep_targetname,
