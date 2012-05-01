@@ -1558,14 +1558,12 @@ gst_camera_bin_create_elements (GstCameraBin2 * camera)
       GstEncodingVideoProfile *video_prof;
       GstCaps *caps;
 
-      caps = gst_caps_new_simple ("video/x-msvideo", NULL);
-      prof = gst_encoding_container_profile_new ("avi", "mpeg4+avi",
+      caps = gst_caps_new_simple ("video/quicktime", NULL);
+      prof = gst_encoding_container_profile_new ("mp4", "h264+isomp4",
           caps, NULL);
       gst_caps_unref (caps);
 
-      caps = gst_caps_new_simple ("video/mpeg",
-          "mpegversion", G_TYPE_INT, 4,
-          "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+      caps = gst_caps_new_simple ("video/x-h264", NULL);
       video_prof = gst_encoding_video_profile_new (caps, NULL, NULL, 1);
       gst_encoding_video_profile_set_variableframerate (video_prof, TRUE);
       if (!gst_encoding_container_profile_add_profile (prof,
