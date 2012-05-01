@@ -86,8 +86,7 @@ gst_mpegv_parse_base_init (gpointer klass)
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
 
   gst_element_class_add_static_pad_template (element_class, &src_template);
-  gst_element_class_add_static_pad_template (element_class,
-      &sink_template);
+  gst_element_class_add_static_pad_template (element_class, &sink_template);
 
   gst_element_class_set_details_simple (element_class,
       "MPEG video elementary stream parser",
@@ -581,8 +580,8 @@ gst_mpegv_parse_update_src_caps (GstMpegvParse * mpvparse)
 
   if (G_LIKELY (mpvparse->mpeg_version))
     gst_caps_set_simple (caps,
-        "mpegversion", G_TYPE_INT, mpvparse->params.mpeg_version,
-        "interlaced", G_TYPE_BOOLEAN, !mpvparse->params.progressive, NULL);
+        "mpegversion", G_TYPE_INT, mpvparse->mpeg_version,
+        "interlaced", G_TYPE_BOOLEAN, !mpvparse->sequenceext.progressive, NULL);
 
   gst_caps_set_simple (caps, "systemstream", G_TYPE_BOOLEAN, FALSE,
       "parsed", G_TYPE_BOOLEAN, TRUE, NULL);
