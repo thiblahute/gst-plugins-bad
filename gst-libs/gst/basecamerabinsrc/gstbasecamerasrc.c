@@ -45,7 +45,7 @@
  * directly in the subclass without extra elements.
  *
  * The src will receive the capture mode from #GstCameraBin2 on the 
- * #GstBaseCameraSrc:mode property. Possible capture modes are defined in
+ * #GstBaseCameraBinSrc:mode property. Possible capture modes are defined in
  * #GstCameraBinMode.
  */
 
@@ -84,7 +84,8 @@ static guint basecamerasrc_signals[LAST_SIGNAL];
 GST_DEBUG_CATEGORY (base_camera_src_debug);
 #define GST_CAT_DEFAULT base_camera_src_debug
 
-GST_BOILERPLATE (GstBaseCameraSrc, gst_base_camera_src, GstBin, GST_TYPE_BIN);
+GST_BOILERPLATE (GstBaseCameraBinSrc, gst_base_camera_src, GstBin,
+    GST_TYPE_BIN);
 
 static GstStaticPadTemplate vfsrc_template =
 GST_STATIC_PAD_TEMPLATE (GST_BASE_CAMERA_SRC_VIEWFINDER_PAD_NAME,
@@ -110,6 +111,7 @@ GST_STATIC_PAD_TEMPLATE (GST_BASE_CAMERA_SRC_VIDEO_PAD_NAME,
  * be implementing the interface..
  */
 
+
 /**
  * gst_base_camera_src_set_mode:
  * @self: the camerasrc bin
@@ -118,9 +120,9 @@ GST_STATIC_PAD_TEMPLATE (GST_BASE_CAMERA_SRC_VIDEO_PAD_NAME,
  * Set the chosen #GstCameraBinMode capture mode.
  */
 gboolean
-gst_base_camera_src_set_mode (GstBaseCameraSrc * self, GstCameraBinMode mode)
+gst_base_camera_src_set_mode (GstBaseCameraBinSrc * self, GstCameraBinMode mode)
 {
-  GstBaseCameraSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
+  GstBaseCameraBinSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
 
   g_return_val_if_fail (bclass->set_mode, FALSE);
 
@@ -138,9 +140,9 @@ gst_base_camera_src_set_mode (GstBaseCameraSrc * self, GstCameraBinMode mode)
  * Apply zoom configured to camerabin to capture.
  */
 void
-gst_base_camera_src_setup_zoom (GstBaseCameraSrc * self)
+gst_base_camera_src_setup_zoom (GstBaseCameraBinSrc * self)
 {
-  GstBaseCameraSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
+  GstBaseCameraBinSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
 
   g_return_if_fail (self->zoom);
   g_return_if_fail (bclass->set_zoom);
@@ -156,10 +158,10 @@ gst_base_camera_src_setup_zoom (GstBaseCameraSrc * self)
  * Apply preview caps to preview pipeline and to video source.
  */
 void
-gst_base_camera_src_setup_preview (GstBaseCameraSrc * self,
+gst_base_camera_src_setup_preview (GstBaseCameraBinSrc * self,
     GstCaps * preview_caps)
 {
-  GstBaseCameraSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
+  GstBaseCameraBinSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
 
   if (self->preview_pipeline) {
     GST_DEBUG_OBJECT (self,
@@ -172,9 +174,9 @@ gst_base_camera_src_setup_preview (GstBaseCameraSrc * self,
 }
 
 static void
-gst_base_camera_src_start_capture (GstBaseCameraSrc * src)
+gst_base_camera_src_start_capture (GstBaseCameraBinSrc * src)
 {
-  GstBaseCameraSrcClass *klass = GST_BASE_CAMERA_SRC_GET_CLASS (src);
+  GstBaseCameraBinSrcClass *klass = GST_BASE_CAMERA_SRC_GET_CLASS (src);
 
   g_return_if_fail (klass->start_capture != NULL);
 
@@ -203,9 +205,9 @@ gst_base_camera_src_start_capture (GstBaseCameraSrc * src)
 }
 
 static void
-gst_base_camera_src_stop_capture (GstBaseCameraSrc * src)
+gst_base_camera_src_stop_capture (GstBaseCameraBinSrc * src)
 {
-  GstBaseCameraSrcClass *klass = GST_BASE_CAMERA_SRC_GET_CLASS (src);
+  GstBaseCameraBinSrcClass *klass = GST_BASE_CAMERA_SRC_GET_CLASS (src);
 
   g_return_if_fail (klass->stop_capture != NULL);
 
@@ -220,7 +222,7 @@ gst_base_camera_src_stop_capture (GstBaseCameraSrc * src)
 }
 
 void
-gst_base_camera_src_finish_capture (GstBaseCameraSrc * self)
+gst_base_camera_src_finish_capture (GstBaseCameraBinSrc * self)
 {
   GST_DEBUG_OBJECT (self, "Finishing capture");
   g_return_if_fail (self->capturing);
@@ -231,7 +233,7 @@ gst_base_camera_src_finish_capture (GstBaseCameraSrc * self)
 static void
 gst_base_camera_src_dispose (GObject * object)
 {
-  GstBaseCameraSrc *src = GST_BASE_CAMERA_SRC_CAST (object);
+  GstBaseCameraBinSrc *src = GST_BASE_CAMERA_SRC_CAST (object);
 
   g_mutex_free (src->capturing_mutex);
 
@@ -252,7 +254,7 @@ gst_base_camera_src_dispose (GObject * object)
 }
 
 static void
-gst_base_camera_src_finalize (GstBaseCameraSrc * self)
+gst_base_camera_src_finalize (GstBaseCameraBinSrc * self)
 {
   G_OBJECT_CLASS (parent_class)->finalize ((GObject *) (self));
 }
@@ -261,7 +263,7 @@ static void
 gst_base_camera_src_set_property (GObject * object,
     guint prop_id, const GValue * value, GParamSpec * pspec)
 {
-  GstBaseCameraSrc *self = GST_BASE_CAMERA_SRC (object);
+  GstBaseCameraBinSrc *self = GST_BASE_CAMERA_SRC (object);
 
   switch (prop_id) {
     case PROP_MODE:
@@ -315,7 +317,7 @@ static void
 gst_base_camera_src_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
-  GstBaseCameraSrc *self = GST_BASE_CAMERA_SRC (object);
+  GstBaseCameraBinSrc *self = GST_BASE_CAMERA_SRC (object);
 
   switch (prop_id) {
     case PROP_MODE:
@@ -348,9 +350,9 @@ gst_base_camera_src_get_property (GObject * object,
 }
 
 static gboolean
-construct_pipeline (GstBaseCameraSrc * self)
+construct_pipeline (GstBaseCameraBinSrc * self)
 {
-  GstBaseCameraSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
+  GstBaseCameraBinSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
 
   if (bclass->construct_pipeline) {
     if (!bclass->construct_pipeline (self)) {
@@ -363,9 +365,9 @@ construct_pipeline (GstBaseCameraSrc * self)
 }
 
 static gboolean
-setup_pipeline (GstBaseCameraSrc * self)
+setup_pipeline (GstBaseCameraBinSrc * self)
 {
-  GstBaseCameraSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
+  GstBaseCameraBinSrcClass *bclass = GST_BASE_CAMERA_SRC_GET_CLASS (self);
   if (bclass->setup_pipeline)
     return bclass->setup_pipeline (self);
   return TRUE;
@@ -376,7 +378,7 @@ gst_base_camera_src_change_state (GstElement * element,
     GstStateChange transition)
 {
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
-  GstBaseCameraSrc *self = GST_BASE_CAMERA_SRC (element);
+  GstBaseCameraBinSrc *self = GST_BASE_CAMERA_SRC (element);
 
   GST_DEBUG_OBJECT (self, "%d -> %d",
       GST_STATE_TRANSITION_CURRENT (transition),
@@ -450,7 +452,7 @@ gst_base_camera_src_base_init (gpointer g_class)
 }
 
 static void
-gst_base_camera_src_class_init (GstBaseCameraSrcClass * klass)
+gst_base_camera_src_class_init (GstBaseCameraBinSrcClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
@@ -481,7 +483,7 @@ gst_base_camera_src_class_init (GstBaseCameraSrcClass * klass)
           MAX_ZOOM, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   /**
-   * GstBaseCameraSrc:post-previews:
+   * GstBaseCameraBinSrc:post-previews:
    *
    * When %TRUE, preview images should be posted to the bus when
    * captures are made
@@ -502,7 +504,7 @@ gst_base_camera_src_class_init (GstBaseCameraSrcClass * klass)
           GST_TYPE_ELEMENT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   /**
-   * GstBaseCameraSrc:ready-for-capture:
+   * GstBaseCameraBinSrc:ready-for-capture:
    *
    * When TRUE new capture can be prepared. If FALSE capturing is ongoing
    * and starting a new capture immediately is not possible.
@@ -537,8 +539,8 @@ gst_base_camera_src_class_init (GstBaseCameraSrcClass * klass)
 }
 
 static void
-gst_base_camera_src_init (GstBaseCameraSrc * self,
-    GstBaseCameraSrcClass * klass)
+gst_base_camera_src_init (GstBaseCameraBinSrc * self,
+    GstBaseCameraBinSrcClass * klass)
 {
   self->width = DEFAULT_WIDTH;
   self->height = DEFAULT_HEIGHT;
@@ -556,7 +558,7 @@ gst_base_camera_src_init (GstBaseCameraSrc * self,
 }
 
 void
-gst_base_camera_src_post_preview (GstBaseCameraSrc * self, GstBuffer * buf)
+gst_base_camera_src_post_preview (GstBaseCameraBinSrc * self, GstBuffer * buf)
 {
   if (self->post_preview) {
     gst_camerabin_preview_pipeline_post (self->preview_pipeline, buf);

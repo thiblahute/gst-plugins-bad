@@ -58,7 +58,7 @@ enum GstVideoRecordingStatus {
  */
 struct _GstWrapperCameraBinSrc
 {
-  GstBaseCameraSrc parent;
+  GstBaseCameraBinSrc parent;
 
   GstCameraBinMode mode;
 
@@ -123,7 +123,7 @@ struct _GstWrapperCameraBinSrc
  */
 struct _GstWrapperCameraBinSrcClass
 {
-  GstBaseCameraSrcClass parent;
+  GstBaseCameraBinSrcClass parent;
 };
 
 gboolean gst_wrapper_camera_bin_src_plugin_init (GstPlugin * plugin);

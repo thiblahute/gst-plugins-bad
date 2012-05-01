@@ -59,7 +59,7 @@ typedef struct _GstTestCameraSrc GstTestCameraSrc;
 typedef struct _GstTestCameraSrcClass GstTestCameraSrcClass;
 struct _GstTestCameraSrc
 {
-  GstBaseCameraSrc element;
+  GstBaseCameraBinSrc element;
 
   GstPad *vfpad;
   GstPad *vidpad;
@@ -70,16 +70,16 @@ struct _GstTestCameraSrc
 
 struct _GstTestCameraSrcClass
 {
-  GstBaseCameraSrcClass parent_class;
+  GstBaseCameraBinSrcClass parent_class;
 };
 
 GType gst_test_camera_src_get_type (void);
 
 GST_BOILERPLATE (GstTestCameraSrc,
-    gst_test_camera_src, GstBaseCameraSrc, GST_TYPE_BASE_CAMERA_SRC);
+    gst_test_camera_src, GstBaseCameraBinSrc, GST_TYPE_BASE_CAMERA_SRC);
 
 static gboolean
-gst_test_camera_src_set_mode (GstBaseCameraSrc * src, GstCameraBinMode mode)
+gst_test_camera_src_set_mode (GstBaseCameraBinSrc * src, GstCameraBinMode mode)
 {
   GstTestCameraSrc *self = GST_TEST_CAMERA_SRC (src);
 
@@ -121,7 +121,7 @@ gst_test_camera_src_base_init (gpointer g_class)
 static void
 gst_test_camera_src_class_init (GstTestCameraSrcClass * klass)
 {
-  GstBaseCameraSrcClass *gstbasecamera_class;
+  GstBaseCameraBinSrcClass *gstbasecamera_class;
 
   gstbasecamera_class = GST_BASE_CAMERA_SRC_CLASS (klass);
   gstbasecamera_class->set_mode = gst_test_camera_src_set_mode;

@@ -37,21 +37,21 @@ G_BEGIN_DECLS
 #define GST_TYPE_BASE_CAMERA_SRC \
   (gst_base_camera_src_get_type())
 #define GST_BASE_CAMERA_SRC(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_BASE_CAMERA_SRC,GstBaseCameraSrc))
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_BASE_CAMERA_SRC,GstBaseCameraBinSrc))
 #define GST_BASE_CAMERA_SRC_GET_CLASS(obj) \
-  (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_BASE_CAMERA_SRC, GstBaseCameraSrcClass))
+  (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_BASE_CAMERA_SRC, GstBaseCameraBinSrcClass))
 #define GST_BASE_CAMERA_SRC_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_BASE_CAMERA_SRC,GstBaseCameraSrcClass))
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_BASE_CAMERA_SRC,GstBaseCameraBinSrcClass))
 #define GST_IS_BASE_CAMERA_SRC(obj) \
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_BASE_CAMERA_SRC))
 #define GST_IS_BASE_CAMERA_SRC_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_BASE_CAMERA_SRC))
 #define GST_BASE_CAMERA_SRC_CAST(obj) \
-  ((GstBaseCameraSrc *) (obj))
+  ((GstBaseCameraBinSrc *) (obj))
 GType gst_base_camera_src_get_type (void);
 
-typedef struct _GstBaseCameraSrc GstBaseCameraSrc;
-typedef struct _GstBaseCameraSrcClass GstBaseCameraSrcClass;
+typedef struct _GstBaseCameraBinSrc GstBaseCameraBinSrc;
+typedef struct _GstBaseCameraBinSrcClass GstBaseCameraBinSrcClass;
 
 #define GST_BASE_CAMERA_SRC_VIEWFINDER_PAD_NAME "vfsrc"
 #define GST_BASE_CAMERA_SRC_IMAGE_PAD_NAME "imgsrc"
@@ -60,9 +60,9 @@ typedef struct _GstBaseCameraSrcClass GstBaseCameraSrcClass;
 #define GST_BASE_CAMERA_SRC_PREVIEW_MESSAGE_NAME "preview-image"
 
 /**
- * GstBaseCameraSrc:
+ * GstBaseCameraBinSrc:
  */
-struct _GstBaseCameraSrc
+struct _GstBaseCameraBinSrc
 {
   GstBin parent;
 
@@ -89,38 +89,38 @@ struct _GstBaseCameraSrc
 
 
 /**
- * GstBaseCameraSrcClass:
- * @construct_pipeline: construct pipeline
+ * GstBaseCameraBinSrcClass:
+ * @construct_pipeline: construct pipeline must be implemented by derived class
  * @setup_pipeline: configure pipeline for the chosen settings
  * @set_zoom: set the zoom
  * @set_mode: set the mode
  */
-struct _GstBaseCameraSrcClass
+struct _GstBaseCameraBinSrcClass
 {
   GstBinClass parent;
 
-  /* Construct pipeline. (called in GST_STATE_CHANGE_NULL_TO_READY) Optional. */
-  gboolean    (*construct_pipeline)  (GstBaseCameraSrc *self);
+  /* construct pipeline must be implemented by derived class */
+  gboolean    (*construct_pipeline)  (GstBaseCameraBinSrc *self);
 
-  /* (called in GST_STATE_CHANGE_READY_TO_PAUSED). Optional. */
-  gboolean    (*setup_pipeline)      (GstBaseCameraSrc *self);
+  /* optional */
+  gboolean    (*setup_pipeline)      (GstBaseCameraBinSrc *self);
 
-  /* Set the zoom. If set, called when changing 'zoom' property. Optional. */
-  void        (*set_zoom)            (GstBaseCameraSrc *self, gfloat zoom);
+  /* set the zoom */
+  void        (*set_zoom)            (GstBaseCameraBinSrc *self, gfloat zoom);
 
-  /* Set the mode. If set, called when changing 'mode' property. Optional. */
-  gboolean    (*set_mode)            (GstBaseCameraSrc *self,
+  /* set the mode */
+  gboolean    (*set_mode)            (GstBaseCameraBinSrc *self,
                                       GstCameraBinMode mode);
 
-  /* Set preview caps. If set, called called when setting new 'preview-caps'. Optional. */
-  gboolean    (*set_preview)         (GstBaseCameraSrc *self,
+  /* set preview caps */
+  gboolean    (*set_preview)         (GstBaseCameraBinSrc *self,
                                       GstCaps *preview_caps);
 
   /* Called by the handler for 'start-capture'. Mandatory. */
-  gboolean (*start_capture) (GstBaseCameraSrc * src);
+  gboolean (*start_capture) (GstBaseCameraBinSrc * src);
 
   /* Called by the handler for 'stop-capture'. Mandatory. */
-  void (*stop_capture) (GstBaseCameraSrc * src);
+  void (*stop_capture) (GstBaseCameraBinSrc * src);
 
   gpointer _gst_reserved[GST_PADDING_LARGE];
 };
@@ -130,13 +130,12 @@ struct _GstBaseCameraSrcClass
 #define MAX_ZOOM 10.0f
 #define ZOOM_1X MIN_ZOOM
 
-gboolean gst_base_camera_src_set_mode (GstBaseCameraSrc *self, GstCameraBinMode mode);
-void gst_base_camera_src_setup_zoom (GstBaseCameraSrc * self);
-void gst_base_camera_src_setup_preview (GstBaseCameraSrc * self, GstCaps * preview_caps);
-void gst_base_camera_src_finish_capture (GstBaseCameraSrc *self);
+gboolean gst_base_camera_src_set_mode (GstBaseCameraBinSrc *self, GstCameraBinMode mode);
+void gst_base_camera_src_setup_zoom (GstBaseCameraBinSrc * self);
+void gst_base_camera_src_setup_preview (GstBaseCameraBinSrc * self, GstCaps * preview_caps);
+void gst_base_camera_src_finish_capture (GstBaseCameraBinSrc *self);
 
-
-void gst_base_camera_src_post_preview (GstBaseCameraSrc *self, GstBuffer * buf);
+void gst_base_camera_src_post_preview (GstBaseCameraBinSrc *self, GstBuffer * buf);
 // XXX add methods to get/set img capture and vid capture caps..
 
 #endif /* __GST_BASE_CAMERA_SRC_H__ */
