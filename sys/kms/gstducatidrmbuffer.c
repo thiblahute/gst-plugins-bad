@@ -153,7 +153,12 @@ static gboolean
 allocator_check_compatible (GstDucatiBufferAllocator * allocator,
     GstBuffer * buffer)
 {
-  return GST_IS_DUCATI_DRM_BUFFER (buffer);
+  static GType kms_type = -1;
+  if (kms_type == -1)
+    kms_type = g_type_from_name ("GstDucatiKMSBuffer");
+
+  return GST_IS_DUCATI_DRM_BUFFER (buffer) ||
+      (kms_type != -1 && G_TYPE_CHECK_INSTANCE_TYPE (buffer, kms_type));
 }
 
 static void
