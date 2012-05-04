@@ -25,8 +25,13 @@
 #include "gstducatibuffer.h"
 #include "gstducatibufferpool.h"
 
-G_DEFINE_TYPE (GstDucatiBuffer, gst_ducati_buffer, GST_TYPE_BUFFER);
-G_DEFINE_TYPE (GstDucatiBufferAllocator, gst_ducati_buffer_allocator,
+typedef GstDucatiBuffer GstKMSDucatiBuffer;
+typedef GstDucatiBufferClass GstKMSDucatiBufferClass;
+typedef GstDucatiBufferAllocator GstKMSDucatiBufferAllocator;
+typedef GstDucatiBufferAllocatorClass GstKMSDucatiBufferAllocatorClass;
+
+G_DEFINE_TYPE (GstKMSDucatiBuffer, gst_ducati_buffer, GST_TYPE_BUFFER);
+G_DEFINE_TYPE (GstKMSDucatiBufferAllocator, gst_ducati_buffer_allocator,
     GST_TYPE_MINI_OBJECT);
 
 GstDucatiBuffer *

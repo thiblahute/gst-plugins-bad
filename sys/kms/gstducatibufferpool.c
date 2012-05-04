@@ -20,7 +20,10 @@
 #include "gstducatibufferpool.h"
 #include <string.h>
 
-G_DEFINE_TYPE (GstDucatiBufferPool, gst_ducati_buffer_pool,
+typedef GstDucatiBufferPool GstKMSDucatiBufferPool;
+typedef GstDucatiBufferPoolClass GstKMSDucatiBufferPoolClass;
+
+G_DEFINE_TYPE (GstKMSDucatiBufferPool, gst_ducati_buffer_pool,
     GST_TYPE_MINI_OBJECT);
 
 GstDucatiBufferPool *

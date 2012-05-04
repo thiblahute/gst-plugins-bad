@@ -27,9 +27,14 @@
 #include <omap_drm.h>
 #include <omap_drmif.h>
 
-G_DEFINE_TYPE (GstDucatiDRMBuffer, gst_ducati_drm_buffer,
+typedef GstDucatiDRMBuffer GstKMSDucatiDRMBuffer;
+typedef GstDucatiDRMBufferClass GstKMSDucatiDRMBufferClass;
+typedef GstDucatiDRMBufferAllocator GstKMSDucatiDRMBufferAllocator;
+typedef GstDucatiDRMBufferAllocatorClass GstKMSDucatiDRMBufferAllocatorClass;
+
+G_DEFINE_TYPE (GstKMSDucatiDRMBuffer, gst_ducati_drm_buffer,
     GST_TYPE_DUCATI_BUFFER);
-G_DEFINE_TYPE (GstDucatiDRMBufferAllocator, gst_ducati_drm_buffer_allocator,
+G_DEFINE_TYPE (GstKMSDucatiDRMBufferAllocator, gst_ducati_drm_buffer_allocator,
     GST_TYPE_DUCATI_BUFFER_ALLOCATOR);
 
 static GstDucatiDRMBuffer *
