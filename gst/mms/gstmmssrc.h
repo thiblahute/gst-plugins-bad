@@ -23,7 +23,6 @@
 #define _GST_MMS_SRC_H_
 
 #include <gst/base/gstpushsrc.h>
-
 #include "mms.h"
 
 G_BEGIN_DECLS

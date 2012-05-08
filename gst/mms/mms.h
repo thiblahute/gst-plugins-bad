@@ -158,8 +158,8 @@ struct _MMSContext {
   GSocketClient         *socket_clt;
   GSocketConnection     *con;
   GSocketConnectable    *connectable;
-  GPollableInputStream  *istream;
-  GPollableOutputStream *ostream;
+  GInputStream          *istream;
+  GOutputStream         *ostream;
   GSource               *write_watch;
   gboolean               needs_write_watch;
   GSource               *read_watch;

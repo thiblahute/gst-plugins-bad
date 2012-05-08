@@ -31,7 +31,7 @@
 GST_DEBUG_CATEGORY (mms_utils_debug);
 #define GST_CAT_DEFAULT mms_utils_debug
 
-#define MMS_TIMEOUT          15 /* Seconds */
+#define MMS_TIMEOUT          5  /* Seconds */
 #define MMS_USER_AGENT       "NSPlayer/7.0.0.1956"
 #define HEADER_SIZE          32
 #define ASF_HEADER_SIZE      8
@@ -45,8 +45,6 @@ static void mms_prepare_command_packet (MMSSession * session,
     MMSPacket * packet, MMSCommand command, MMSCommand expected_resp);
 
 /* Callback headers */
-static gboolean r_src_cb (GObject * pollable, MMSSession * session);
-static gboolean w_src_cb (GObject * pollable, MMSSession * session);
 static void session_connected_cb (GSocketClient * socket_clt,
     GAsyncResult * res, MMSSession * session);
 
@@ -702,17 +700,6 @@ mms_packet_parse (MMSPacket * packet)
   return res;
 }
 
-/* MMSSession related  function */
-static inline void
-add_watch (MMSSession * session, GSource ** source, GSourceFunc function)
-{
-  GST_DEBUG ("Adding watch source");
-  *source = g_pollable_input_stream_create_source (session->istream, NULL);
-  g_source_attach (*source, session->context);
-  g_source_set_callback (*source, function, session, NULL);
-  session->needs_read_watch = TRUE;
-}
-
 static inline gboolean
 handle_packet_data (MMSSession * session, MMSPacket * packet, guint8 * data,
     gint64 rcv_size, gboolean is_header, GError ** err)
@@ -720,22 +707,8 @@ handle_packet_data (MMSSession * session, MMSPacket * packet, guint8 * data,
   GST_DEBUG ("Handle data %p, size %i, err %p, is_header %i",
       data, rcv_size, *err, is_header);
 
-  if (g_error_matches (*err, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK)) {
-    GST_DEBUG ("Would block");
-
-    /* If blocking, we add a watch, and make sure it is not deconnected
-     * if we have various packets to be received */
-    if (!session->read_watch)
-      add_watch (session, &session->read_watch, (GSourceFunc) r_src_cb);
-    else
-      session->needs_read_watch = TRUE;
-
-    return FALSE;
-
-  } else if (rcv_size > 0) {
+  if (rcv_size > 0) {
     g_clear_error (err);
-
-    session->needs_read_watch = FALSE;
 
     if (is_header || packet_is_header (packet->cdata, rcv_size)) {
       if (!parse_header (packet, data, rcv_size))
@@ -748,7 +721,6 @@ handle_packet_data (MMSSession * session, MMSPacket * packet, guint8 * data,
 
   } else if (rcv_size == 0) {
     g_clear_error (err);
-    session->needs_read_watch = FALSE;
 
     GST_DEBUG ("EOF.... this shouldn't happend here");
 
@@ -767,7 +739,6 @@ handle_packet_data (MMSSession * session, MMSPacket * packet, guint8 * data,
 
 error_parsing:
   GST_WARNING_OBJECT (session->elem, "Error parsing");
-  session->needs_read_watch = TRUE;
 
   return FALSE;
 }
@@ -778,18 +749,11 @@ send (MMSSession * session, MMSPacket * packet, GError ** err)
   gsize written;
 
   GST_DEBUG ("Sending %" G_GSIZE_FORMAT " bytes", packet->size);
-  written = g_pollable_output_stream_write_nonblocking (session->ostream,
+  written = g_output_stream_write (session->ostream,
       packet->data, packet->size, NULL, err);
 
   if (g_error_matches (*err, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK)) {
     GST_DEBUG ("Writing would block");
-
-    /* If blocking, we add a watch, and make sure it is not deconnected
-     * if we have various packets to be received */
-    if (!session->write_watch)
-      add_watch (session, &session->write_watch, (GSourceFunc) w_src_cb);
-    else
-      session->needs_write_watch = TRUE;
 
     return FALSE;
 
@@ -803,7 +767,6 @@ send (MMSSession * session, MMSPacket * packet, GError ** err)
       GST_WARNING ("Error writing: ", (*err)->message);
 
     g_clear_error (err);
-    session->needs_read_watch = FALSE;
 
     GST_DEBUG ("EOF makes no sense...");
 
@@ -832,7 +795,7 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
     GST_DEBUG ("Getting the %i bytes Header", HEADER_SIZE);
 
     data = g_malloc (HEADER_SIZE);
-    rcv_size = g_pollable_input_stream_read_nonblocking (session->istream, data,
+    rcv_size = g_input_stream_read (session->istream, data,
         HEADER_SIZE, NULL, err);
 
     if (handle_packet_data (session, packet, data, rcv_size, TRUE,
@@ -842,7 +805,7 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
   }
 
   GST_DEBUG ("Getting %" G_GSIZE_FORMAT, packet->missing_size);
-  rcv_size = g_pollable_input_stream_read_nonblocking (session->istream,
+  rcv_size = g_input_stream_read (session->istream,
       packet->cdata, packet->missing_size, NULL, err);
 
   if (rcv_size < packet->missing_size) {
@@ -859,7 +822,7 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
 
       /* If it is the case, we just reply to the command if needed */
       if (packet->type == MMS_PACKET_COMMAND &&
-          session->r_packet.expected_resp == MMS_PACKET_NONE) {
+          session->r_packet.expected_resp == MMS_COMMAND_NONE) {
         g_clear_error (err);
 
         GST_DEBUG ("Got a command packet, following up");
@@ -869,12 +832,6 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
     }
 
     GST_DEBUG ("Data still missing  %" G_GSIZE_FORMAT, packet->missing_size);
-
-    /* And make sure we will get the end of the packet */
-    if (!session->read_watch)
-      add_watch (session, &session->read_watch, (GSourceFunc) r_src_cb);
-    else
-      session->needs_read_watch = TRUE;
 
     return FALSE;
   }
@@ -969,7 +926,7 @@ communication_sequence_next (MMSSession * session, GError ** err)
           next_command = MMS_COMMAND_START_FROM_ID;
           expected_resp = MMS_COMMAND_MEDIA_FILE_REQUEST;
           /* Getting ASF headers */
-          /* ... receive_packet (session, rpckt, err); */
+          receive_packet (session, rpckt, err);
           break;
         case MMS_COMMAND_MEDIA_FILE_REQUEST:
           next_command = MMS_COMMAND_NONE;
@@ -1005,7 +962,6 @@ communication_sequence_next (MMSSession * session, GError ** err)
         /* And let the flow happen */
         g_cond_signal (session->connected_cond);
 
-        session->needs_read_watch = TRUE;
         receive_packet (session, rpckt, err);
       } else {
         /* The buffer is filled */
@@ -1147,7 +1103,6 @@ mms_session_is_seekable (MMSSession * session)
 gboolean
 mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
 {
-  gsize rcv_size;
   GError *merr = NULL;
 
   session->filled = FALSE;
@@ -1170,7 +1125,7 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
   /* We are still waiting for command packet, let's get them first */
   if (G_UNLIKELY (session->r_packet.expected_resp != MMS_COMMAND_NONE)) {
     mms_packet_clean (&session->r_packet, TRUE);
-    rcv_size = receive_packet (session, &session->r_packet, &merr);
+    receive_packet (session, &session->r_packet, &merr);
 
     return FALSE;
   }
@@ -1191,7 +1146,7 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
   session->r_packet.type = MMS_PACKET_ASF_MEDIA;
   session->w_packet.type = MMS_PACKET_NONE;
 
-  rcv_size = receive_packet (session, &session->r_packet, &merr);
+  receive_packet (session, &session->r_packet, &merr);
 
   return TRUE;
 }
@@ -1220,10 +1175,8 @@ session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
 
   /* Keeping connection informations */
   ios = G_IO_STREAM (session->con);
-  session->istream =
-      G_POLLABLE_INPUT_STREAM (g_io_stream_get_input_stream (ios));
-  session->ostream =
-      G_POLLABLE_OUTPUT_STREAM (g_io_stream_get_output_stream (ios));
+  session->istream = g_io_stream_get_input_stream (ios);
+  session->ostream = g_io_stream_get_output_stream (ios);
 
   GST_INFO_OBJECT (session->elem, "Connection successfully done.. "
       "start communications");
@@ -1240,73 +1193,4 @@ session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
     g_clear_error (&err);
   }
 
-}
-
-static gboolean
-w_src_cb (GObject * pollable, MMSSession * session)
-{
-  GError *err = NULL;
-
-  if (!send (session, &session->w_packet, &err))
-    GST_DEBUG ("Could not send packet");
-
-  if (session->needs_write_watch == FALSE) {
-    GST_DEBUG ("Watch not needed anymore, removing it");
-
-    session->write_watch = NULL;
-    return FALSE;
-  }
-
-  GST_DEBUG ("More packets to be written, keep watch");
-
-  return TRUE;
-}
-
-static gboolean
-r_src_cb (GObject * pollable, MMSSession * session)
-{
-  GError *err = NULL;
-  gboolean received;
-
-  received = receive_packet (session, &session->r_packet, &err);
-
-  if (session->needs_read_watch == FALSE) {
-    GST_DEBUG ("Watch %p not needed anymore, removing it", session->read_watch);
-    g_source_unref (session->read_watch);
-    session->read_watch = NULL;
-
-    if (received == FALSE) {
-      GST_DEBUG ("Watch to be removed, but didn't receive packet-> FLOW_ERROR");
-
-      session->flow = GST_FLOW_ERROR;
-      mms_packet_clean (&session->r_packet, TRUE);
-      if (*(session->cbuf)) {
-        GST_BUFFER_DATA (*(session->cbuf)) = NULL;
-        GST_BUFFER_SIZE (*(session->cbuf)) = 0;
-      }
-      g_cond_signal (session->connected_cond);
-      g_cond_signal (session->buf_ready);
-    }
-
-    return FALSE;
-  }
-
-  if (g_error_matches (err, G_IO_ERROR, G_IO_ERROR_TIMED_OUT)) {
-    GST_DEBUG ("Timed out, giving up");
-    GST_MEMDUMP ("We got:", session->r_packet.data, session->r_packet.size);
-
-    session->flow = GST_FLOW_ERROR;
-
-    /* Could happen while connecting or filling buffers */
-    g_cond_signal (session->buf_ready);
-    g_cond_signal (session->connected_cond);
-
-    return FALSE;
-  }
-
-  g_clear_error (&err);
-
-  GST_DEBUG ("More packets to be read, keep watch");
-
-  return TRUE;
 }

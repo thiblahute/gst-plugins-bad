@@ -46,8 +46,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_mms_src_debug_category);
 #define GST_CAT_DEFAULT gst_mms_src_debug_category
 
 /* prototypes */
-
-
 static void gst_mms_src_set_property (GObject * object,
     guint property_id, const GValue * value, GParamSpec * pspec);
 static void gst_mms_src_get_property (GObject * object,
@@ -550,6 +548,8 @@ gst_mms_src_create (GstPushSrc * bsrc, GstBuffer ** buf)
   if (G_UNLIKELY (src->mms_session.initialized == FALSE &&
           src->mms_session.flow == GST_FLOW_OK)) {
 
+    GST_DEBUG ("But still connecting... waiting for the connection "
+        "to the server to be done");
     /* Wait until connection is done */
     while ((src->mms_session.flow == GST_FLOW_OK &&
             G_UNLIKELY (src->mms_session.initialized == FALSE))) {
@@ -564,7 +564,10 @@ gst_mms_src_create (GstPushSrc * bsrc, GstBuffer ** buf)
 
       return GST_FLOW_ERROR;
     }
+
+    GST_DEBUG ("Now connected");
   }
+
 
   mms_session_fill_buffer (&src->mms_session, buf, &err);
 
