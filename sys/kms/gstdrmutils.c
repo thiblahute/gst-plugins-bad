@@ -18,6 +18,10 @@ gst_drm_connector_find_mode_and_plane (int fd, int width, int height,
   if (!connector->count_modes)
     goto error_no_mode;
 
+#if 0
+  /* XXX: don't try to find a mode that matches width/height. Leave ->mode as
+   * NULL so that the first (highest res) mode is selected
+   */
   for (i = 0; i < connector->count_modes; i++) {
     c->mode = &connector->modes[i];
     if (c->mode->hdisplay == width && c->mode->vdisplay == height)
@@ -25,6 +29,7 @@ gst_drm_connector_find_mode_and_plane (int fd, int width, int height,
     else
       c->mode = NULL;
   }
+#endif
 
   if (c->mode == NULL) {
     /* XXX: just pick the first available mode. Not sure this is correct... */

@@ -126,9 +126,9 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   sink->format = format;
   sink->par_n = par_n;
   sink->par_d = par_d;
-  sink->crop.x = sink->crop.y = 0;
-  sink->crop.w = width;
-  sink->crop.h = height;
+  sink->src_rect.x = sink->src_rect.y = 0;
+  sink->src_rect.w = width;
+  sink->src_rect.h = height;
   sink->input_width = width;
   sink->input_height = height;
 
@@ -194,11 +194,20 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   GstFlowReturn flow_ret = GST_FLOW_OK;
   int ret;
 
+  GST_INFO_OBJECT (sink, "enter");
+
   if (sink->conn.crtc == -1) {
+    GstVideoRectangle src = { 0 };
+    GstVideoRectangle dest = { 0 };
+
     if (!gst_drm_connector_find_mode_and_plane (sink->fd,
-            sink->crop.w, sink->crop.h,
+            sink->src_rect.w, sink->src_rect.h,
             sink->resources, sink->plane_resources, &sink->conn, &sink->plane))
       goto connector_not_found;
+
+    dest.w = sink->conn.mode->hdisplay;
+    dest.h = sink->conn.mode->vdisplay;
+    gst_video_sink_center_rect (sink->src_rect, dest, &sink->dst_rect, FALSE);
   }
 
   if (GST_IS_DUCATI_KMS_BUFFER (inbuf)) {
@@ -227,14 +236,15 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   ret = drmModeSetPlane (sink->fd, sink->plane->plane_id,
       sink->conn.crtc, kms_buf->fb_id, 0,
       /* make video fullscreen: */
-      0, 0, sink->crop.w, sink->crop.h,
+      sink->dst_rect.x, sink->dst_rect.y, sink->dst_rect.w, sink->dst_rect.h,
       /* source/cropping coordinates are given in Q16 */
-      sink->crop.x << 16, sink->crop.y << 16,
-      sink->crop.w << 16, sink->crop.h << 16);
+      sink->src_rect.x << 16, sink->src_rect.y << 16,
+      sink->src_rect.w << 16, sink->src_rect.h << 16);
   if (ret)
     goto set_plane_failed;
 
 out:
+  GST_INFO_OBJECT (sink, "exit");
   gst_buffer_unref (buf);
   return flow_ret;
 
@@ -267,7 +277,7 @@ gst_kms_sink_event (GstBaseSink * bsink, GstEvent * event)
       gint left, top, width, height;
       GstStructure *structure;
       GstMessage *message;
-      GstVideoRectangle *c = &sink->crop;
+      GstVideoRectangle *c = &sink->src_rect;
 
       gst_event_parse_crop (event, &top, &left, &width, &height);
 
@@ -282,7 +292,7 @@ gst_kms_sink_event (GstBaseSink * bsink, GstEvent * event)
       c->w = width;
       c->h = height;
 
-      structure = gst_structure_new ("video-size-crop", "width", G_TYPE_INT,
+      structure = gst_structure_new ("video-size-src_rect", "width", G_TYPE_INT,
           width, "height", G_TYPE_INT, height, NULL);
       message = gst_message_new_application (GST_OBJECT (sink), structure);
       gst_bus_post (gst_element_get_bus (GST_ELEMENT (sink)), message);
@@ -407,13 +417,16 @@ gst_kms_sink_reset (GstKMSSink * sink)
   }
 
   sink->par_n = sink->par_d = 1;
-  sink->crop.x = 0;
-  sink->crop.y = 0;
-  sink->crop.w = 0;
-  sink->crop.h = 0;
+  sink->src_rect.x = 0;
+  sink->src_rect.y = 0;
+  sink->src_rect.w = 0;
+  sink->src_rect.h = 0;
   sink->input_width = 0;
   sink->input_height = 0;
   sink->format = GST_VIDEO_FORMAT_UNKNOWN;
+
+  memset (&sink->src_rect, 0, sizeof (GstVideoRectangle));
+  memset (&sink->dst_rect, 0, sizeof (GstVideoRectangle));
 }
 
 static gboolean

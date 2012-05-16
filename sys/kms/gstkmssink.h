@@ -65,7 +65,8 @@ struct _GstKMSSink
   gint par_n, par_d;
   gint fps_n, fps_d;
   gboolean keep_aspect;
-  GstVideoRectangle crop;
+  GstVideoRectangle src_rect;
+  GstVideoRectangle dst_rect;
   int fd;
   struct omap_device *dev;
   drmModeRes *resources;
