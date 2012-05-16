@@ -74,6 +74,7 @@ struct _GstKMSSink
   struct connector conn;
   drmModePlane *plane;
   GstDucatiBufferPool *pool;
+  gboolean scale;
 };
 
 struct _GstKMSSinkClass

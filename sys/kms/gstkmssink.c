@@ -50,6 +50,7 @@ enum
   PROP_0,
   PROP_PIXEL_ASPECT_RATIO,
   PROP_FORCE_ASPECT_RATIO,
+  PROP_SCALE,
 };
 
 static gboolean
@@ -207,7 +208,8 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
 
     dest.w = sink->conn.mode->hdisplay;
     dest.h = sink->conn.mode->vdisplay;
-    gst_video_sink_center_rect (sink->src_rect, dest, &sink->dst_rect, FALSE);
+    gst_video_sink_center_rect (sink->src_rect, dest, &sink->dst_rect,
+        sink->scale);
   }
 
   if (GST_IS_DUCATI_KMS_BUFFER (inbuf)) {
@@ -327,6 +329,9 @@ gst_kms_sink_set_property (GObject * object, guint prop_id,
     case PROP_FORCE_ASPECT_RATIO:
       sink->keep_aspect = g_value_get_boolean (value);
       break;
+    case PROP_SCALE:
+      sink->scale = g_value_get_boolean (value);
+      break;
     case PROP_PIXEL_ASPECT_RATIO:
     {
       GValue *tmp;
@@ -363,6 +368,9 @@ gst_kms_sink_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_FORCE_ASPECT_RATIO:
       g_value_set_boolean (value, sink->keep_aspect);
+      break;
+    case PROP_SCALE:
+      g_value_set_boolean (value, sink->scale);
       break;
     case PROP_PIXEL_ASPECT_RATIO:
     {
@@ -586,6 +594,10 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   g_object_class_install_property (gobject_class, PROP_PIXEL_ASPECT_RATIO,
       g_param_spec_string ("pixel-aspect-ratio", "Pixel Aspect Ratio",
           "The pixel aspect ratio of the device", "1/1",
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_SCALE,
+      g_param_spec_boolean ("scale", "Scale",
+          "When true, scale to render fullscreen", FALSE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_details_simple (gstelement_class,
