@@ -407,12 +407,17 @@ gst_kms_sink_reset (GstKMSSink * sink)
   }
 
   if (sink->dev) {
+#if 0
     omap_device_del (sink->dev);
+#endif
+    dce_deinit (sink->dev);
     sink->dev = NULL;
   }
 
   if (sink->fd != -1) {
+#if 0
     close (sink->fd);
+#endif
     sink->fd = -1;
   }
 
