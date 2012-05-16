@@ -51,6 +51,7 @@ enum
   PROP_PIXEL_ASPECT_RATIO,
   PROP_FORCE_ASPECT_RATIO,
   PROP_SCALE,
+  PROP_CONNECTOR,
 };
 
 static gboolean
@@ -148,8 +149,6 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
     gst_mini_object_unref (GST_MINI_OBJECT (allocator));
   }
 
-  /* make connector-id a property? */
-  sink->conn.id = 7;
   sink->conn.crtc = -1;
   sink->plane = NULL;
 
@@ -332,6 +331,9 @@ gst_kms_sink_set_property (GObject * object, guint prop_id,
     case PROP_SCALE:
       sink->scale = g_value_get_boolean (value);
       break;
+    case PROP_CONNECTOR:
+      sink->conn.id = g_value_get_int (value);
+      break;
     case PROP_PIXEL_ASPECT_RATIO:
     {
       GValue *tmp;
@@ -371,6 +373,9 @@ gst_kms_sink_get_property (GObject * object, guint prop_id,
       break;
     case PROP_SCALE:
       g_value_set_boolean (value, sink->scale);
+      break;
+    case PROP_CONNECTOR:
+      g_value_set_int (value, sink->conn.id);
       break;
     case PROP_PIXEL_ASPECT_RATIO:
     {
@@ -598,6 +603,10 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   g_object_class_install_property (gobject_class, PROP_SCALE,
       g_param_spec_boolean ("scale", "Scale",
           "When true, scale to render fullscreen", FALSE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_CONNECTOR,
+      g_param_spec_int ("connector", "Connector",
+          "DRM connector id", 1, G_MAXINT32, 7,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_details_simple (gstelement_class,
