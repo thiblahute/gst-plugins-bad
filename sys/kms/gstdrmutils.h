@@ -20,8 +20,8 @@ struct connector {
 	int pipe;
 };
 
-gboolean gst_drm_connector_find_mode (int fd, drmModeRes *resources,
-    drmModePlaneRes *plane_resources,
-    struct connector *c);
+gboolean gst_drm_connector_find_mode_and_plane (int fd, int width, int height,
+    drmModeRes *resources, drmModePlaneRes *plane_resources,
+    struct connector *c, drmModePlane **out_plane);
 
 #endif /* __GST_DRMUTILS_H__ */

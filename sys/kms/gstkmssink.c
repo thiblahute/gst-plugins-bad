@@ -107,7 +107,7 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   gint par_n, par_d;
   GstVideoFormat format;
   GstDucatiBufferAllocator *allocator;
-  int size, i;
+  int size;
 
   sink = GST_KMS_SINK (bsink);
 
@@ -123,9 +123,6 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
     return FALSE;
   }
 
-  if (!gst_kms_sink_calculate_aspect_ratio (sink, width, height, par_n, par_d))
-    return FALSE;
-
   sink->format = format;
   sink->par_n = par_n;
   sink->par_d = par_d;
@@ -134,7 +131,6 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   sink->crop.h = height;
   sink->input_width = width;
   sink->input_height = height;
-
 
   if (!sink->pool || !gst_caps_is_equal (caps, sink->pool->caps)) {
     if (sink->pool) {
@@ -154,35 +150,12 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   /* make connector-id a property? */
   sink->conn.id = 7;
   sink->conn.crtc = -1;
-  snprintf (sink->conn.mode_str, sizeof (sink->conn.mode_str),
-      "%dx%d", GST_VIDEO_SINK_WIDTH (sink), GST_VIDEO_SINK_HEIGHT (sink));
-
-  if (!gst_drm_connector_find_mode (sink->fd,
-          sink->resources, sink->plane_resources, &sink->conn))
-    goto connector_not_found;
-
   sink->plane = NULL;
-  for (i = 0; i < sink->plane_resources->count_planes; i++) {
-    drmModePlane *plane = drmModeGetPlane (sink->fd,
-        sink->plane_resources->planes[i]);
-    if (plane->possible_crtcs & (1 << sink->conn.pipe)) {
-      sink->plane = plane;
-      break;
-    }
-  }
-
-  if (sink->plane == NULL)
-    goto plane_not_found;
 
   return TRUE;
 
 fail:
   return FALSE;
-
-connector_not_found:
-  GST_ELEMENT_ERROR (sink, RESOURCE, NOT_FOUND,
-      (NULL), ("connector not found", strerror (errno), errno));
-  goto fail;
 
 plane_not_found:
   GST_ELEMENT_ERROR (sink, RESOURCE, NOT_FOUND, (NULL), ("plane not found"));
@@ -221,6 +194,13 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   GstFlowReturn flow_ret = GST_FLOW_OK;
   int ret;
 
+  if (sink->conn.crtc == -1) {
+    if (!gst_drm_connector_find_mode_and_plane (sink->fd,
+            sink->crop.w, sink->crop.h,
+            sink->resources, sink->plane_resources, &sink->conn, &sink->plane))
+      goto connector_not_found;
+  }
+
   if (GST_IS_DUCATI_KMS_BUFFER (inbuf)) {
     kms_buf = GST_DUCATI_KMS_BUFFER (gst_buffer_ref (inbuf));
     buf = GST_BUFFER (kms_buf);
@@ -247,7 +227,7 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   ret = drmModeSetPlane (sink->fd, sink->plane->plane_id,
       sink->conn.crtc, kms_buf->fb_id, 0,
       /* make video fullscreen: */
-      0, 0, sink->conn.mode->hdisplay, sink->conn.mode->vdisplay,
+      0, 0, sink->crop.w, sink->crop.h,
       /* source/cropping coordinates are given in Q16 */
       sink->crop.x << 16, sink->crop.y << 16,
       sink->crop.w << 16, sink->crop.h << 16);
@@ -268,6 +248,11 @@ set_plane_failed:
   GST_ELEMENT_ERROR (sink, RESOURCE, FAILED,
       (NULL), ("drmModeSetPlane failed: %s (%d)", strerror (errno), errno));
   flow_ret = GST_FLOW_ERROR;
+  goto out;
+
+connector_not_found:
+  GST_ELEMENT_ERROR (sink, RESOURCE, NOT_FOUND,
+      (NULL), ("connector not found", strerror (errno), errno));
   goto out;
 }
 
