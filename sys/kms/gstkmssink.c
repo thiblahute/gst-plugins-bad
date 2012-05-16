@@ -600,6 +600,10 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   gstbasesink_class->stop = GST_DEBUG_FUNCPTR (gst_kms_sink_stop);
   gstbasesink_class->buffer_alloc =
       GST_DEBUG_FUNCPTR (gst_kms_sink_buffer_alloc);
+  /* disable preroll as it's called before GST_CROP_EVENT has been received, so
+   * we end up configuring the wrong mode... (based on padded caps)
+   */
+  gstbasesink_class->preroll = NULL;
   videosink_class->show_frame = GST_DEBUG_FUNCPTR (gst_kms_sink_show_frame);
 }
 
