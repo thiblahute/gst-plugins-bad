@@ -607,7 +607,7 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   g_object_class_install_property (gobject_class, PROP_CONNECTOR,
       g_param_spec_int ("connector", "Connector",
           "DRM connector id", 1, G_MAXINT32, 7,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_CONSTRUCT));
 
   gst_element_class_set_details_simple (gstelement_class,
       "Video sink", "Sink/Video",
