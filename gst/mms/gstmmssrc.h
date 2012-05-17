@@ -48,11 +48,8 @@ struct _GstMMSSrc
   gchar              *uri;
 
 
-  MMSSession          mms_session;      /* The main MMS session */
+  MMSSession         *mms_session;      /* The main MMS session */
 
-  GMainContext       *context;          /* I/O context. */
-  GMainLoop          *loop;             /* Event loop. */
-  GstTask            *task;             /* I/O thread creation */
   GStaticRecMutex    *stream_lock;      /* Protects the polling thread */
 };
 

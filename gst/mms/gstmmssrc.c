@@ -256,7 +256,7 @@ gst_mms_src_init (GstMMSSrc * src, GstMMSSrcClass * mms_src_class)
 {
   GstBaseSrc *bsrc = GST_BASE_SRC (src);
 
-  mms_session_init (&src->mms_session, GST_ELEMENT (src));
+  src->mms_session = mms_session_new (GST_ELEMENT (src));
   src->srcpad = GST_BASE_SRC_PAD (bsrc);
 
   src->stream_lock = g_new (GStaticRecMutex, 1);
@@ -313,7 +313,7 @@ gst_mms_src_dispose (GObject * object)
 void
 gst_mms_src_finalize (GObject * object)
 {
-  mms_session_clean (&GST_MMS_SRC (object)->mms_session);
+  g_object_unref (GST_MMS_SRC (object)->mms_session);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -350,44 +350,19 @@ gst_mms_src_newsegment (GstBaseSrc * bsrc)
   return TRUE;
 }
 
-static void
-gst_mms_src_io_thread (GstMMSSrc * src)
-{
-  /* Run the context loop */
-  g_main_context_iteration (src->context, FALSE);
-}
-
 static gboolean
 gst_mms_src_start (GstBaseSrc * bsrc)
 {
-  gint res;
   GstMMSSrc *src = GST_MMS_SRC (bsrc);
 
-  src->context = g_main_context_new ();
-  src->loop = g_main_loop_new (src->context, TRUE);
-
-  if (src->loop == NULL) {
-    GST_ELEMENT_ERROR (src, LIBRARY, INIT, (NULL),
-        ("Failed to start GMainLoop"));
-    g_main_context_unref (src->context);
-    return FALSE;
-  }
-
-  src->task = gst_task_create ((GstTaskFunction) gst_mms_src_io_thread, src);
-  gst_task_set_lock (src->task, GST_MMS_SRC_GET_LOCK (src));
-
-  /* We start the I/O task */
-  gst_task_start (src->task);
-  res = mms_session_connect (&src->mms_session, src->uri, src->context);
-
-  if (res == -1) {
+  if (mms_session_connect (src->mms_session, src->uri) == FALSE) {
     GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ, ("No URI to open specified"),
         (NULL));
 
     return FALSE;
   }
 
-  return res ? TRUE : FALSE;
+  return TRUE;
 }
 
 static gboolean
@@ -397,24 +372,8 @@ gst_mms_src_stop (GstBaseSrc * bsrc)
 
   GST_DEBUG_OBJECT (src, "stopping");
 
-  if (src->task) {
-    gst_task_stop (src->task);
-
-    /* now wait for the task to finish */
-    gst_task_join (src->task);
-
-    gst_object_unref (GST_OBJECT (src->task));
-    g_main_loop_quit (src->loop);
-    g_main_context_unref (src->context);
-    g_main_loop_unref (src->loop);
-
-    src->loop = NULL;
-    src->context = NULL;
-    src->task = NULL;
-  }
-
   /* We can now free ressources */
-  mms_session_clean (&src->mms_session);
+  mms_session_stop (src->mms_session);
   GST_DEBUG_OBJECT (src, "stop");
 
   return TRUE;
@@ -447,7 +406,7 @@ gst_mms_src_is_seekable (GstBaseSrc * bsrc)
 
   GST_DEBUG_OBJECT (src, "is_seekable");
 
-  return mms_session_is_seekable (&src->mms_session);
+  return mms_session_is_seekable (src->mms_session);
 }
 
 static gboolean
@@ -455,13 +414,7 @@ gst_mms_src_unlock (GstBaseSrc * bsrc)
 {
   GstMMSSrc *src = GST_MMS_SRC (bsrc);
 
-  GST_DEBUG_OBJECT (src, "unlock");
-  if (src->task) {
-    gst_task_stop (src->task);
-    gst_task_join (src->task);
-    g_main_loop_quit (src->loop);
-  }
-
+  mms_session_stop (src->mms_session);
   GST_MMS_SRC_STREAM_UNLOCK (src);
 
   return TRUE;
@@ -545,39 +498,7 @@ gst_mms_src_create (GstPushSrc * bsrc, GstBuffer ** buf)
 
   GST_LOG_OBJECT (src, "buffer wanted");
 
-  if (G_UNLIKELY (src->mms_session.initialized == FALSE &&
-          src->mms_session.flow == GST_FLOW_OK)) {
-
-    GST_DEBUG ("But still connecting... waiting for the connection "
-        "to the server to be done");
-    /* Wait until connection is done */
-    while ((src->mms_session.flow == GST_FLOW_OK &&
-            G_UNLIKELY (src->mms_session.initialized == FALSE))) {
-      g_cond_wait (src->mms_session.connected_cond,
-          (GMutex *) GST_MMS_SRC_GET_LOCK (src));
-    }
-
-    if (src->mms_session.flow != GST_FLOW_OK) {
-      GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ,
-          ("Could not connect to streaming server."), (NULL));
-      /*FIXME redirect to rtsp in this case */
-
-      return GST_FLOW_ERROR;
-    }
-
-    GST_DEBUG ("Now connected");
-  }
-
-
-  mms_session_fill_buffer (&src->mms_session, buf, &err);
-
-  /* Wait for the buffer to be filled */
-  while (src->mms_session.filled != TRUE &&
-      src->mms_session.flow == GST_FLOW_OK)
-    g_cond_wait (src->mms_session.buf_ready,
-        (GMutex *) GST_MMS_SRC_GET_LOCK (src));
-
-  return src->mms_session.flow;
+  return mms_session_fill_buffer (src->mms_session, buf, &err);
 }
 
 /* Plugin initialization */
