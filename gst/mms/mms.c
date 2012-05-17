@@ -33,7 +33,7 @@ GST_DEBUG_CATEGORY (mms_utils_debug);
 
 #define MMS_SESSION_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), MMS_TYPE_SESSION, MMSSessionPrivate))
 
-#define MMS_TIMEOUT          5  /* Seconds */
+#define MMS_TIMEOUT          50 /* Seconds */
 #define MMS_USER_AGENT       "NSPlayer/7.0.0.1956"
 #define HEADER_SIZE          32
 #define ASF_HEADER_SIZE      8
@@ -137,6 +137,8 @@ typedef struct
   guint64 packet_count;
   guint32 bit_rate;
   guint32 header_size;
+
+  guint32 hresult;
 } MMSFileInfos;
 
 struct _MMSPacket
@@ -206,15 +208,11 @@ struct _MMSSessionPrivate
   MMSPacket w_packet;
   MMSPacket r_packet;
 
-  /* Connection is done async, run it in a separate thread */
-  GMainContext *context;        /* I/O context. */
-  GMainLoop *loop;              /* Event loop. */
-  GstTask *connection_task;     /* I/O thread creation */
-  GStaticRecMutex connect_mutex;
-
   GstBuffer **cbuf;
   GstBuffer *asf_header;
-  gboolean filled;
+
+  GMutex *connect_mutex;
+  gboolean connected;
 };
 
 G_DEFINE_TYPE (MMSSession, mms_session, G_TYPE_OBJECT);
@@ -764,14 +762,27 @@ read_check32 (GstByteReader * br, guint32 * val, guint32 expected)
 }
 
 static inline void
+parse_stream_selection_indicator (MMSPacket * packet)
+{
+  GstByteReader br;
+  MMSFileInfos *finfos = &packet->finfos;
+
+  GST_DEBUG ("Parsing open file command");
+  gst_byte_reader_init (&br, packet->mmsdata, packet->mms_size);
+
+  finfos->chunk_len = gst_byte_reader_get_uint32_le_unchecked (&br);
+  read_check32 (&br, &finfos->mid, 0x00040021);
+  read_check32 (&br, &finfos->hresult, 0x0000000);
+}
+
+static inline void
 parse_report_open_file (MMSPacket * packet)
 {
   GstByteReader br;
   MMSFileInfos *finfos = &packet->finfos;
 
-  GST_DEBUG ("Parsing initial command");
+  GST_DEBUG ("Parsing open file command");
   gst_byte_reader_init (&br, packet->mmsdata, packet->mms_size);
-
 
   finfos->chunk_len = gst_byte_reader_get_uint32_le_unchecked (&br);
   read_check32 (&br, &finfos->mid, 0x00040006);
@@ -853,6 +864,8 @@ parse_command (MMSPacket * packet, const guint8 * data, gsize size)
     case MMS_COMMAND_MEDIA_FILE_OPEN:
       parse_report_open_file (packet);
       break;
+    case MMS_COMMAND_STREAM_SELECTION_INDICATOR:
+      parse_stream_selection_indicator (packet);
       break;
     default:
       GST_DEBUG ("Unhandled command received 0x%02x", packet->command);
@@ -972,7 +985,7 @@ send (MMSSession * session, MMSPacket * packet, GError ** err)
 static gboolean
 receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
 {
-  gint rcv_size;
+  gsize rcv_size;
   guint8 *data = NULL;
 
   MMSSessionPrivate *priv = session->priv;
@@ -982,8 +995,8 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
     GST_DEBUG ("Getting the %i bytes Header", HEADER_SIZE);
 
     data = g_malloc (HEADER_SIZE);
-    rcv_size = g_input_stream_read (priv->istream, data,
-        HEADER_SIZE, NULL, err);
+    g_input_stream_read_all (priv->istream, data,
+        HEADER_SIZE, &rcv_size, NULL, err);
 
     if (handle_packet_data (session, packet, data, rcv_size, TRUE,
             err) == FALSE)
@@ -992,8 +1005,8 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
   }
 
   GST_DEBUG ("Getting %" G_GSIZE_FORMAT, packet->missing_size);
-  rcv_size = g_input_stream_read (priv->istream,
-      packet->cdata, packet->missing_size, NULL, err);
+  g_input_stream_read_all (priv->istream, packet->cdata, packet->missing_size,
+      &rcv_size, NULL, err);
 
   if (rcv_size < packet->missing_size) {
     /* Properly reset packet attributes */
@@ -1034,7 +1047,7 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
 
   if (packet->type == MMS_PACKET_COMMAND &&
       packet->command != packet->expected_resp) {
-    GST_WARNING_OBJECT (priv->elem, "Unexpected command: 0x%02x received"
+    GST_DEBUG_OBJECT (priv->elem, "Unexpected command: 0x%02x received"
         " instead of 0x%02x", packet->command, packet->expected_resp);
   }
 
@@ -1115,12 +1128,15 @@ communication_sequence_next (MMSSession * session, GError ** err)
           next_command = MMS_COMMAND_START_FROM_ID;
           expected_resp = MMS_COMMAND_MEDIA_FILE_REQUEST;
           /* Getting ASF headers */
-          receive_packet (session, rpckt, err);
+          /*receive_packet (session, rpckt, err); */
           break;
         case MMS_COMMAND_MEDIA_FILE_REQUEST:
           next_command = MMS_COMMAND_NONE;
           rpckt->expected_resp = MMS_COMMAND_NONE;
-          mms_session_fill_buffer (session, priv->cbuf, err);
+          GST_DEBUG ("Fill buff");
+          priv->connected = TRUE;
+          g_mutex_unlock (priv->connect_mutex);
+          mms_session_stop (session);
           break;
         default:
           GST_ERROR ("FIXME, handle command type 0x%02x", rpckt->command);
@@ -1150,20 +1166,10 @@ communication_sequence_next (MMSSession * session, GError ** err)
         rpckt->data = NULL;
 
         receive_packet (session, rpckt, err);
-      } else {
-        /* The buffer is filled */
-        priv->filled = TRUE;
       }
 
       break;
   }
-}
-
-static void
-connection_thread (GMainContext * context)
-{
-  /* Run the context loop */
-  g_main_context_iteration (context, FALSE);
 }
 
 /* GObject vmethods */
@@ -1203,6 +1209,7 @@ mms_session_finalize (GObject * session)
     priv->finfos = NULL;
   }
 
+  g_mutex_free (priv->connect_mutex);
   mms_packet_clean (&priv->w_packet, TRUE);
   mms_packet_clean (&priv->r_packet, TRUE);
 }
@@ -1225,9 +1232,9 @@ mms_session_init (MMSSession * session)
   priv->flow = GST_FLOW_OK;
   priv->initialized = FALSE;
   priv->asf_header = NULL;
-  priv->context = NULL;
-  priv->loop = NULL;
-  priv->connection_task = NULL;
+  priv->connected = FALSE;
+
+  priv->connect_mutex = g_mutex_new ();
 }
 
 static void
@@ -1254,25 +1261,6 @@ mms_session_new (GstElement * elem)
 void
 mms_session_stop (MMSSession * session)
 {
-  MMSSessionPrivate *priv = session->priv;
-
-  if (priv->connection_task) {
-    gst_task_stop (priv->connection_task);
-
-    /* now wait for the connection_task to finish */
-    gst_task_join (priv->connection_task);
-
-    gst_object_unref (GST_OBJECT (priv->connection_task));
-    g_main_loop_quit (priv->loop);
-    g_main_context_unref (priv->context);
-    g_main_loop_unref (priv->loop);
-    g_static_rec_mutex_free (&priv->connect_mutex);
-
-    priv->loop = NULL;
-    priv->context = NULL;
-    priv->connection_task = NULL;
-  }
-
   return;
 }
 
@@ -1294,29 +1282,13 @@ mms_session_connect (MMSSession * session, const gchar * uri)
 
   GST_INFO_OBJECT (priv->elem, "Connecting to %s:%u ...", uri, 1755);
 
-  /* Connecting to the host */
-  priv->context = g_main_context_new ();
-  priv->loop = g_main_loop_new (priv->context, TRUE);
-  if (priv->loop == NULL) {
-    GST_ELEMENT_ERROR (priv, LIBRARY, INIT, (NULL),
-        ("Failed to start GMainLoop"));
-    g_main_context_unref (priv->context);
-    priv->context = NULL;
-    return FALSE;
-  }
-
-  priv->connection_task = gst_task_create ((GstTaskFunction) connection_thread,
-      priv->context);
-  g_static_rec_mutex_init (&priv->connect_mutex);
-  gst_task_set_lock (priv->connection_task, &priv->connect_mutex);
-  gst_task_start (priv->connection_task);       /* Start task */
-
   priv->socket_clt = g_socket_client_new ();
   g_socket_client_set_timeout (priv->socket_clt, MMS_TIMEOUT);
+
+  g_mutex_lock (priv->connect_mutex);
   g_socket_client_connect_async (priv->socket_clt,
       priv->connectable, NULL, (GAsyncReadyCallback) session_connected_cb,
       session);
-
   add = G_NETWORK_ADDRESS (priv->connectable);
   priv->host = g_network_address_get_hostname (add);
   path = strstr (uri, priv->host) + strlen (priv->host);
@@ -1344,9 +1316,15 @@ GstFlowReturn
 mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
 {
   GError *merr = NULL;
+  GstFlowReturn ret = GST_FLOW_OK;
   MMSSessionPrivate *priv = session->priv;
 
-  priv->filled = FALSE;
+  g_mutex_lock (priv->connect_mutex);
+
+  if (priv->connected == FALSE) {
+    ret = GST_FLOW_ERROR;
+    goto done;
+  }
 
   if (G_UNLIKELY (priv->asf_header)) {
     GST_DEBUG ("Filling with ASF header");
@@ -1354,9 +1332,8 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
     /* Use the asf header */
     *buf = priv->asf_header;
     priv->asf_header = NULL;
-    priv->filled = TRUE;
 
-    return GST_FLOW_OK;
+    goto done;
   }
 
   /* Set the buffer we are currently filling up */
@@ -1367,7 +1344,8 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
     mms_packet_clean (&priv->r_packet, TRUE);
     receive_packet (session, &priv->r_packet, &merr);
 
-    return GST_FLOW_ERROR;
+    ret = GST_FLOW_ERROR;
+    goto done;
   }
 
   GST_DEBUG ("Filling buffer, size %" G_GSIZE_FORMAT,
@@ -1377,7 +1355,8 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
     *buf = gst_buffer_try_new_and_alloc (priv->finfos->packet_size);
 
     if (*buf == NULL) {
-      return GST_FLOW_ERROR;
+      ret = GST_FLOW_ERROR;
+      goto done;
     }
   }
 
@@ -1388,7 +1367,10 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
 
   receive_packet (session, &priv->r_packet, &merr);
 
-  return GST_FLOW_OK;
+done:
+  g_mutex_unlock (priv->connect_mutex);
+
+  return ret;
 }
 
 /* Callbacks */
@@ -1408,6 +1390,7 @@ session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
     GST_ERROR_OBJECT (priv->elem, "Connection error: %s", err->message);
 
     /* Can't connect, stop can't go further */
+    g_mutex_unlock (priv->connect_mutex);
     priv->flow = GST_FLOW_ERROR;
 
     return;
