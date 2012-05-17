@@ -1132,11 +1132,15 @@ communication_sequence_next (MMSSession * session, GError ** err)
         case MMS_COMMAND_MEDIA_FILE_REQUEST:
           next_command = MMS_COMMAND_NONE;
           rpckt->expected_resp = MMS_COMMAND_NONE;
-          GST_DEBUG ("Fill buff");
-          priv->connected = TRUE;
-          /* Ready to produce buffers */
-          g_mutex_unlock (priv->connect_mutex);
-          mms_session_stop (session);
+
+          /* We are now ready to get buffers */
+          if (priv->connected == FALSE) {
+            priv->connected = TRUE;
+            /* Signal it */
+            g_mutex_unlock (priv->connect_mutex);
+            mms_session_stop (session);
+          }
+          /* FIXME: What should be done in case we were already connected? */
           break;
         default:
           GST_ERROR ("FIXME, handle command type 0x%02x", rpckt->command);
