@@ -1319,9 +1319,8 @@ mms_session_stop (MMSSession * session)
 }
 
 gboolean
-mms_session_connect (MMSSession * session, const gchar * uri)
+mms_session_connect (MMSSession * session, const gchar * uri, GError ** err)
 {
-  GError *err = NULL;
   GNetworkAddress *add;
   const gchar *path;
 
@@ -1330,8 +1329,8 @@ mms_session_connect (MMSSession * session, const gchar * uri)
   if (uri == NULL || *uri == '\0')
     goto no_uri;
 
-  priv->connectable = g_network_address_parse_uri (uri, 1755, &err);
-  if (err)
+  priv->connectable = g_network_address_parse_uri (uri, 1755, err);
+  if (*err)
     goto no_uri;
 
   GST_INFO_OBJECT (priv->elem, "Connecting to %s:%u ...", uri, 1755);

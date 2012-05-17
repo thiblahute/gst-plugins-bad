@@ -60,7 +60,8 @@ GType mms_session_get_type        (void);
 MMSSession *mms_session_new       (GstElement * elem);
 
 gboolean mms_session_connect      (MMSSession *session,
-                                   const gchar *uri);
+                                   const gchar *uri,
+                                   GError **err);
 
 void mms_session_stop             (MMSSession *session);
 

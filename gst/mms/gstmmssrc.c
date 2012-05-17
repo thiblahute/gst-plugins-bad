@@ -256,7 +256,6 @@ gst_mms_src_init (GstMMSSrc * src, GstMMSSrcClass * mms_src_class)
 {
   GstBaseSrc *bsrc = GST_BASE_SRC (src);
 
-  src->mms_session = mms_session_new (GST_ELEMENT (src));
   src->srcpad = GST_BASE_SRC_PAD (bsrc);
 
   src->stream_lock = g_new (GStaticRecMutex, 1);
@@ -353,11 +352,15 @@ gst_mms_src_newsegment (GstBaseSrc * bsrc)
 static gboolean
 gst_mms_src_start (GstBaseSrc * bsrc)
 {
+  GError *error = NULL;
   GstMMSSrc *src = GST_MMS_SRC (bsrc);
 
-  if (mms_session_connect (src->mms_session, src->uri) == FALSE) {
-    GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ, ("No URI to open specified"),
-        (NULL));
+  if (src->mms_session == NULL)
+    src->mms_session = mms_session_new (GST_ELEMENT (src));
+
+  if (mms_session_connect (src->mms_session, src->uri, &error) == FALSE) {
+    GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ, ("Error connection %s",
+            error->message), (NULL));
 
     return FALSE;
   }
@@ -373,8 +376,8 @@ gst_mms_src_stop (GstBaseSrc * bsrc)
   GST_DEBUG_OBJECT (src, "stopping");
 
   /* We can now free ressources */
-  mms_session_stop (src->mms_session);
-  GST_DEBUG_OBJECT (src, "stop");
+  if (src->mms_session != NULL)
+    g_object_unref (src->mms_session);
 
   return TRUE;
 }
