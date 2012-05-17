@@ -33,17 +33,15 @@ GST_DEBUG_CATEGORY (mms_utils_debug);
 
 #define MMS_SESSION_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), MMS_TYPE_SESSION, MMSSessionPrivate))
 
-#define MMS_TIMEOUT          50 /* Seconds */
-#define MMS_USER_AGENT       "NSPlayer/7.0.0.1956"
 #define HEADER_SIZE          32
 #define ASF_HEADER_SIZE      8
+#define MMS_USER_AGENT       "NSPlayer/7.0.0.1956"
+
+#define DEFAULT_MMS_TIMEOUT          50 /* Seconds */
 
 static gboolean send_receive_dance (MMSSession * session, GError ** err);
 static inline void
 communication_sequence_next (MMSSession * session, GError ** err);
-static void
-session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
-    MMSSession * session);
 
 /************************************
  * MMS related enums and structures *
@@ -192,8 +190,6 @@ struct _MMSSessionPrivate
 
   MMSFileInfos *finfos;
 
-  /* weather we initialized the connection or not  */
-  volatile gboolean initialized;
   volatile GstFlowReturn flow;
 
   guint32 seq_num;              /* sequence number */
@@ -982,7 +978,7 @@ send (MMSSession * session, MMSPacket * packet, GError ** err)
 }
 
 
-static gboolean
+static GstFlowReturn
 receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
 {
   gsize rcv_size;
@@ -1000,15 +996,17 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
 
     if (handle_packet_data (session, packet, data, rcv_size, TRUE,
             err) == FALSE)
-      return FALSE;
+      return GST_FLOW_ERROR;
 
   }
 
   GST_DEBUG ("Getting %" G_GSIZE_FORMAT, packet->missing_size);
-  g_input_stream_read_all (priv->istream, packet->cdata, packet->missing_size,
-      &rcv_size, NULL, err);
-
-  if (rcv_size < packet->missing_size) {
+  if (g_input_stream_read_all (priv->istream, packet->cdata,
+          packet->missing_size, &rcv_size, NULL, err) == FALSE) {
+    GST_WARNING_OBJECT (session, "Error getting packet %s",
+        *err ? (*err)->message : "No error information");
+    g_clear_error (err);
+  } else if (rcv_size < packet->missing_size) {
     /* Properly reset packet attributes */
     packet->cdata += rcv_size;
     packet->missing_size -= rcv_size;
@@ -1023,24 +1021,25 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
       /* If it is the case, we just reply to the command if needed */
       if (packet->type == MMS_PACKET_COMMAND &&
           priv->r_packet.expected_resp == MMS_COMMAND_NONE) {
-        g_clear_error (err);
 
         GST_DEBUG ("Got a command packet, following up");
         communication_sequence_next (session, err);
-        return FALSE;
+
+        /* And we try again getting the packet we were expecting */
+        return receive_packet (session, packet, err);
       }
     }
 
     GST_DEBUG ("Data still missing  %" G_GSIZE_FORMAT, packet->missing_size);
 
-    return FALSE;
+    return GST_FLOW_ERROR;
   }
 
   packet->size = packet->mms_size + HEADER_SIZE;
 
   if (!handle_packet_data (session, packet, packet->mmsdata, rcv_size, FALSE,
           err))
-    return FALSE;
+    return GST_FLOW_ERROR;
 
   mms_packet_parse (packet);
   GST_MEMDUMP ("Received packet: ", packet->mmsdata, packet->mms_size);
@@ -1066,7 +1065,7 @@ receive_packet (MMSSession * session, MMSPacket * packet, GError ** err)
   g_clear_error (err);
   communication_sequence_next (session, err);
 
-  return TRUE;
+  return GST_FLOW_OK;
 }
 
 static gboolean
@@ -1081,7 +1080,7 @@ send_receive_dance (MMSSession * session, GError ** err)
   mms_packet_clean (wpckt, TRUE);
   mms_packet_clean (rpckt, TRUE);
   g_clear_error (err);
-  if (receive_packet (session, rpckt, err) == FALSE)
+  if (receive_packet (session, rpckt, err) != GST_FLOW_OK)
     return FALSE;
 
   return TRUE;
@@ -1135,6 +1134,7 @@ communication_sequence_next (MMSSession * session, GError ** err)
           rpckt->expected_resp = MMS_COMMAND_NONE;
           GST_DEBUG ("Fill buff");
           priv->connected = TRUE;
+          /* Ready to produce buffers */
           g_mutex_unlock (priv->connect_mutex);
           mms_session_stop (session);
           break;
@@ -1152,24 +1152,79 @@ communication_sequence_next (MMSSession * session, GError ** err)
 
       break;
     }
-    default:
-      if (rpckt->type == MMS_PACKET_ASF_HEADER) {
-        GST_DEBUG ("Keeping ASF header");
-        /* We keep the ASF header so we can use it when needed */
-        g_clear_error (err);
-        priv->initialized = TRUE;
-        priv->asf_header = gst_buffer_new ();
-        GST_BUFFER_DATA (priv->asf_header) = rpckt->mmsdata;
-        GST_BUFFER_SIZE (priv->asf_header) = rpckt->mms_size;
+    case MMS_PACKET_ASF_HEADER:
+    {
+      GstBuffer *nbuf;
 
-        /* Lose our reference to the data */
-        rpckt->data = NULL;
+      nbuf = gst_buffer_new ();
+      GST_BUFFER_DATA (nbuf) = rpckt->mmsdata;
+      GST_BUFFER_SIZE (nbuf) = rpckt->mms_size;
 
-        receive_packet (session, rpckt, err);
+      if (priv->asf_header == NULL) {
+        GST_DEBUG ("Keeping ASF header %" GST_PTR_FORMAT, priv->asf_header);
+        priv->asf_header = nbuf;
+      } else {
+        GstBuffer *old_header = priv->asf_header;
+
+        priv->asf_header = gst_buffer_merge (priv->asf_header, nbuf);
+        gst_buffer_unref (old_header);
+        gst_buffer_unref (nbuf);
       }
 
+      /* Lose our reference to the data */
+      rpckt->data = NULL;
+
+      receive_packet (session, rpckt, err);
+    }
+      break;
+    default:
       break;
   }
+}
+
+/* Callbacks */
+static void
+session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
+    MMSSession * session)
+{
+  GIOStream *ios;
+
+  GError *err = NULL;
+  MMSSessionPrivate *priv = session->priv;
+
+  GST_DEBUG ("Connection Done");
+
+  priv->con = g_socket_client_connect_finish (socket_clt, res, &err);
+  if (err) {
+    GST_ERROR_OBJECT (priv->elem, "Connection error: %s", err->message);
+
+    /* Can't connect, stop can't go further */
+    g_mutex_unlock (priv->connect_mutex);
+    priv->flow = GST_FLOW_ERROR;
+
+    return;
+  }
+
+  /* Keeping connection informations */
+  ios = G_IO_STREAM (priv->con);
+  priv->istream = g_io_stream_get_input_stream (ios);
+  priv->ostream = g_io_stream_get_output_stream (ios);
+
+  GST_INFO_OBJECT (priv->elem, "Connection successfully done.. "
+      "starting communications");
+
+  mms_prepare_command_packet (session, &priv->r_packet, MMS_COMMAND_NONE,
+      MMS_COMMAND_NONE);
+
+  /* Start communication chain */
+  communication_sequence_next (session, &err);
+  if (err) {
+    GST_DEBUG ("Got error \"%s\", let the connection chain running anyway",
+        err->message);
+
+    g_clear_error (&err);
+  }
+
 }
 
 /* GObject vmethods */
@@ -1230,7 +1285,6 @@ mms_session_init (MMSSession * session)
   priv->finfos = NULL;
   priv->istream = NULL;
   priv->flow = GST_FLOW_OK;
-  priv->initialized = FALSE;
   priv->asf_header = NULL;
   priv->connected = FALSE;
 
@@ -1283,7 +1337,7 @@ mms_session_connect (MMSSession * session, const gchar * uri)
   GST_INFO_OBJECT (priv->elem, "Connecting to %s:%u ...", uri, 1755);
 
   priv->socket_clt = g_socket_client_new ();
-  g_socket_client_set_timeout (priv->socket_clt, MMS_TIMEOUT);
+  g_socket_client_set_timeout (priv->socket_clt, DEFAULT_MMS_TIMEOUT);
 
   g_mutex_lock (priv->connect_mutex);
   g_socket_client_connect_async (priv->socket_clt,
@@ -1320,7 +1374,6 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
   MMSSessionPrivate *priv = session->priv;
 
   g_mutex_lock (priv->connect_mutex);
-
   if (priv->connected == FALSE) {
     ret = GST_FLOW_ERROR;
     goto done;
@@ -1339,81 +1392,24 @@ mms_session_fill_buffer (MMSSession * session, GstBuffer ** buf, GError ** err)
   /* Set the buffer we are currently filling up */
   priv->cbuf = buf;
 
-  /* We are still waiting for command packet, let's get them first */
-  if (G_UNLIKELY (priv->r_packet.expected_resp != MMS_COMMAND_NONE)) {
-    mms_packet_clean (&priv->r_packet, TRUE);
-    receive_packet (session, &priv->r_packet, &merr);
+  *buf = gst_buffer_try_new_and_alloc (priv->finfos->packet_size);
 
+  if (*buf == NULL) {
     ret = GST_FLOW_ERROR;
     goto done;
   }
 
-  GST_DEBUG ("Filling buffer, size %" G_GSIZE_FORMAT,
-      (gsize) priv->finfos->packet_size);
-
-  if (*buf == NULL) {
-    *buf = gst_buffer_try_new_and_alloc (priv->finfos->packet_size);
-
-    if (*buf == NULL) {
-      ret = GST_FLOW_ERROR;
-      goto done;
-    }
-  }
-
-  GST_DEBUG ("Filling buffer, size %" G_GSIZE_FORMAT, GST_BUFFER_SIZE (*buf));
   set_data (&priv->r_packet, GST_BUFFER_DATA (*buf), GST_BUFFER_SIZE (*buf));
+
   priv->r_packet.type = MMS_PACKET_ASF_MEDIA;
   priv->w_packet.type = MMS_PACKET_NONE;
 
-  receive_packet (session, &priv->r_packet, &merr);
+  ret = receive_packet (session, &priv->r_packet, &merr);
 
 done:
   g_mutex_unlock (priv->connect_mutex);
+  GST_DEBUG ("Buffer filled: %" GST_PTR_FORMAT, *buf);
+
 
   return ret;
-}
-
-/* Callbacks */
-static void
-session_connected_cb (GSocketClient * socket_clt, GAsyncResult * res,
-    MMSSession * session)
-{
-  GIOStream *ios;
-
-  GError *err = NULL;
-  MMSSessionPrivate *priv = session->priv;
-
-  GST_DEBUG ("Connection Done");
-
-  priv->con = g_socket_client_connect_finish (socket_clt, res, &err);
-  if (err) {
-    GST_ERROR_OBJECT (priv->elem, "Connection error: %s", err->message);
-
-    /* Can't connect, stop can't go further */
-    g_mutex_unlock (priv->connect_mutex);
-    priv->flow = GST_FLOW_ERROR;
-
-    return;
-  }
-
-  /* Keeping connection informations */
-  ios = G_IO_STREAM (priv->con);
-  priv->istream = g_io_stream_get_input_stream (ios);
-  priv->ostream = g_io_stream_get_output_stream (ios);
-
-  GST_INFO_OBJECT (priv->elem, "Connection successfully done.. "
-      "starting communications");
-
-  mms_prepare_command_packet (session, &priv->r_packet, MMS_COMMAND_NONE,
-      MMS_COMMAND_NONE);
-
-  /* Start communication chain */
-  communication_sequence_next (session, &err);
-  if (err) {
-    GST_DEBUG ("Got error \"%s\", let the connection chain running anyway",
-        err->message);
-
-    g_clear_error (&err);
-  }
-
 }
