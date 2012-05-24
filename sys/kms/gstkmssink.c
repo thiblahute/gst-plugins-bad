@@ -28,13 +28,19 @@
 #include "config.h"
 #endif
 
+#include <gst/video/videocontext.h>
 #include "gstkmssink.h"
 #include "gstducatikmsbuffer.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_debug_kms_sink);
 #define GST_CAT_DEFAULT gst_debug_kms_sink
 
-G_DEFINE_TYPE (GstKMSSink, gst_kms_sink, GST_TYPE_VIDEO_SINK);
+static void
+gst_kms_sink_video_context_interface_init (GstVideoContextInterface * iface);
+
+G_DEFINE_TYPE_EXTENDED (GstKMSSink, gst_kms_sink, GST_TYPE_VIDEO_SINK, 0,
+    G_IMPLEMENT_INTERFACE (GST_TYPE_VIDEO_CONTEXT,
+        gst_kms_sink_video_context_interface_init));
 
 static void gst_kms_sink_reset (GstKMSSink * sink);
 
@@ -153,13 +159,6 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   sink->plane = NULL;
 
   return TRUE;
-
-fail:
-  return FALSE;
-
-plane_not_found:
-  GST_ELEMENT_ERROR (sink, RESOURCE, NOT_FOUND, (NULL), ("plane not found"));
-  goto fail;
 }
 
 static void
@@ -183,6 +182,48 @@ gst_kms_sink_get_times (GstBaseSink * bsink, GstBuffer * buf,
   }
 }
 
+static gboolean
+gst_kms_sink_query (GstBaseSink * basesink, GstQuery * query)
+{
+  gboolean res = FALSE;
+  GstKMSSink *sink = GST_KMS_SINK (basesink);
+
+  switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_CUSTOM:
+    {
+      const gchar **types;
+      gint i;
+      GstStructure *structure;
+
+      structure = gst_query_get_structure (query);
+      if (strcmp (gst_structure_get_name (structure), "prepare-video-context"))
+        break;
+
+      types = gst_video_context_query_get_supported_types (query);
+      for (i = 0; types[i]; i++) {
+        if (strcmp (types[i], "drm-fd"))
+          continue;
+
+        if (sink->fd != -1) {
+          gst_structure_set (structure,
+              "video-context-type", G_TYPE_STRING, types[i],
+              "video-context", G_TYPE_INT, sink->fd, NULL);
+
+          res = TRUE;
+        }
+
+        break;
+      }
+
+      break;
+    }
+    default:
+      break;
+  }
+
+  return res;
+}
+
 static GstFlowReturn
 gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
 {
@@ -197,7 +238,6 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   GST_INFO_OBJECT (sink, "enter");
 
   if (sink->conn.crtc == -1) {
-    GstVideoRectangle src = { 0 };
     GstVideoRectangle dest = { 0 };
 
     if (!gst_drm_connector_find_mode_and_plane (sink->fd,
@@ -415,17 +455,12 @@ gst_kms_sink_reset (GstKMSSink * sink)
   }
 
   if (sink->dev) {
-#if 0
     omap_device_del (sink->dev);
-#endif
-    dce_deinit (sink->dev);
     sink->dev = NULL;
   }
 
   if (sink->fd != -1) {
-#if 0
     close (sink->fd);
-#endif
     sink->fd = -1;
   }
 
@@ -446,19 +481,20 @@ static gboolean
 gst_kms_sink_start (GstBaseSink * bsink)
 {
   GstKMSSink *sink;
+  const gchar *context_types[] = { "drm-fd", NULL };
 
   sink = GST_KMS_SINK (bsink);
-#if 0
-  sink->fd = drmOpen ("omapdrm", NULL);
-  if (sink->fd < 0)
-    goto open_failed;
+
+  gst_video_context_prepare (GST_VIDEO_CONTEXT (sink), context_types);
+  if (sink->fd == -1) {
+    sink->fd = drmOpen ("omapdrm", NULL);
+    if (sink->fd < 0)
+      goto open_failed;
+  }
 
   sink->dev = omap_device_new (sink->fd);
   if (sink->dev == NULL)
     goto device_failed;
-#endif
-  sink->dev = dce_init ();
-  sink->fd = dce_get_fd ();
 
   sink->resources = drmModeGetResources (sink->fd);
   if (sink->resources == NULL)
@@ -557,6 +593,21 @@ beach:
 }
 
 static void
+gst_kms_sink_set_video_context (GstVideoContext * context,
+    const gchar * type, const GValue * value)
+{
+  GstKMSSink *sink = GST_KMS_SINK (context);
+
+  sink->fd = g_value_get_int (value);
+}
+
+static void
+gst_kms_sink_video_context_interface_init (GstVideoContextInterface * iface)
+{
+  iface->set_context = gst_kms_sink_set_video_context;
+}
+
+static void
 gst_kms_sink_finalize (GObject * object)
 {
   GstKMSSink *sink;
@@ -620,6 +671,7 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_kms_sink_setcaps);
   gstbasesink_class->get_times = GST_DEBUG_FUNCPTR (gst_kms_sink_get_times);
   gstbasesink_class->event = GST_DEBUG_FUNCPTR (gst_kms_sink_event);
+  gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_kms_sink_query);
   gstbasesink_class->start = GST_DEBUG_FUNCPTR (gst_kms_sink_start);
   gstbasesink_class->stop = GST_DEBUG_FUNCPTR (gst_kms_sink_stop);
   gstbasesink_class->buffer_alloc =
