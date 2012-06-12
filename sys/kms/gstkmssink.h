@@ -71,6 +71,8 @@ struct _GstKMSSink
   struct connector conn;
   drmModePlane *plane;
   GstDRMBufferPool *pool;
+  /* current displayed buffer and last displayed buffer: */
+  GstBuffer *display_buf, *last_buf;
   gboolean scale;
 };
 

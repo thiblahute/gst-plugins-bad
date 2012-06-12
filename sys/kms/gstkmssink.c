@@ -276,6 +276,12 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   if (ret)
     goto set_plane_failed;
 
+  if (sink->last_buf)
+    gst_buffer_unref (sink->last_buf);
+
+  sink->last_buf = sink->display_buf;
+  sink->display_buf = gst_buffer_ref (buf);
+
 out:
   GST_INFO_OBJECT (sink, "exit");
   /* TODO: we probably want to unref after displaying the *next* frame */
@@ -445,6 +451,16 @@ gst_kms_sink_reset (GstKMSSink * sink)
   if (sink->resources) {
     drmModeFreeResources (sink->resources);
     sink->resources = NULL;
+  }
+
+  if (sink->last_buf) {
+    gst_buffer_unref (sink->last_buf);
+    sink->last_buf = NULL;
+  }
+
+  if (sink->display_buf) {
+    gst_buffer_unref (sink->display_buf);
+    sink->display_buf = NULL;
   }
 
   if (sink->dev) {
