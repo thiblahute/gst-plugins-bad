@@ -27,6 +27,7 @@
 
 #include <gst/video/video.h>
 #include <gst/video/gstvideosink.h>
+#include <gst/drm/gstdrmbufferpool.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -36,11 +37,7 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include <omap_drm.h>
-#include <omap_drmif.h>
-
 #include "gstdrmutils.h"
-#include "gstducatibufferpool.h"
 
 G_BEGIN_DECLS
 #define GST_TYPE_KMS_SINK \
@@ -73,7 +70,7 @@ struct _GstKMSSink
   drmModePlaneRes *plane_resources;
   struct connector conn;
   drmModePlane *plane;
-  GstDucatiBufferPool *pool;
+  GstDRMBufferPool *pool;
   gboolean scale;
 };
 

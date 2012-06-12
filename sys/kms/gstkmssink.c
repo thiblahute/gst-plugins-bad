@@ -30,7 +30,11 @@
 
 #include <gst/video/videocontext.h>
 #include "gstkmssink.h"
-#include "gstducatikmsbuffer.h"
+#include "gstkmsbufferpriv.h"
+
+#include <omap_drm.h>
+#include <omap_drmif.h>
+#include <xf86drmMode.h>
 
 GST_DEBUG_CATEGORY_STATIC (gst_debug_kms_sink);
 #define GST_CAT_DEFAULT gst_debug_kms_sink
@@ -114,8 +118,6 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   gint fps_n, fps_d;
   gint par_n, par_d;
   GstVideoFormat format;
-  GstDucatiBufferAllocator *allocator;
-  int size;
 
   sink = GST_KMS_SINK (bsink);
 
@@ -140,19 +142,17 @@ gst_kms_sink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   sink->input_width = width;
   sink->input_height = height;
 
-  if (!sink->pool || !gst_caps_is_equal (caps, sink->pool->caps)) {
+  if (!sink->pool || !gst_drm_buffer_pool_check_caps (sink->pool, caps)) {
+    int size;
+
     if (sink->pool) {
-      gst_ducati_buffer_pool_destroy (sink->pool);
+      gst_drm_buffer_pool_destroy (sink->pool);
       sink->pool = NULL;
     }
 
-    allocator =
-        GST_DUCATI_BUFFER_ALLOCATOR (gst_ducati_kms_buffer_allocator_new
-        (sink->dev));
     size = gst_video_format_get_size (format, width, height);
-    sink->pool = gst_ducati_buffer_pool_new (GST_ELEMENT (sink),
-        allocator, caps, size);
-    gst_mini_object_unref (GST_MINI_OBJECT (allocator));
+    sink->pool = gst_drm_buffer_pool_new (GST_ELEMENT (sink),
+        sink->fd, caps, size);
   }
 
   sink->conn.crtc = -1;
@@ -228,10 +228,8 @@ static GstFlowReturn
 gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
 {
   GstKMSSink *sink = GST_KMS_SINK (vsink);
-  GstBuffer *buf;
-  GstDucatiKMSBuffer *kms_buf;
-  GstDucatiDRMBuffer *drm_buf;
-  uint32_t fourcc = GST_MAKE_FOURCC ('N', 'V', '1', '2');
+  GstBuffer *buf = NULL;
+  GstKMSBufferPriv *priv;
   GstFlowReturn flow_ret = GST_FLOW_OK;
   int ret;
 
@@ -251,31 +249,25 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
         sink->scale);
   }
 
-  if (GST_IS_DUCATI_KMS_BUFFER (inbuf)) {
-    kms_buf = GST_DUCATI_KMS_BUFFER (gst_buffer_ref (inbuf));
-    buf = GST_BUFFER (kms_buf);
+  priv = gst_kms_buffer_priv (sink, inbuf);
+  if (priv) {
+    buf = gst_buffer_ref (inbuf);
   } else {
-    kms_buf = GST_DUCATI_KMS_BUFFER (gst_ducati_buffer_pool_get (sink->pool,
-            inbuf, FALSE));
-    buf = GST_BUFFER (kms_buf);
-    memcpy (GST_BUFFER_DATA (buf),
-        GST_BUFFER_DATA (inbuf), GST_BUFFER_SIZE (inbuf));
-  }
-
-  drm_buf = GST_DUCATI_DRM_BUFFER (kms_buf);
-
-  if (kms_buf->fb_id == -1) {
-    kms_buf->fd = sink->fd;
-    ret = drmModeAddFB2 (kms_buf->fd,
-        sink->input_width, sink->input_height, fourcc,
-        drm_buf->handles, drm_buf->pitches, drm_buf->offsets,
-        &kms_buf->fb_id, 0);
-    if (ret)
+    GST_LOG_OBJECT (sink, "not a KMS buffer, slow-path!");
+    buf = gst_drm_buffer_pool_get (sink->pool, FALSE);
+    if (buf) {
+      GST_BUFFER_TIMESTAMP (buf) = GST_BUFFER_TIMESTAMP (inbuf);
+      GST_BUFFER_DURATION (buf) = GST_BUFFER_DURATION (inbuf);
+      memcpy (GST_BUFFER_DATA (buf),
+          GST_BUFFER_DATA (inbuf), GST_BUFFER_SIZE (inbuf));
+      priv = gst_kms_buffer_priv (sink, buf);
+    }
+    if (!priv)
       goto add_fb2_failed;
   }
 
   ret = drmModeSetPlane (sink->fd, sink->plane->plane_id,
-      sink->conn.crtc, kms_buf->fb_id, 0,
+      sink->conn.crtc, priv->fb_id, 0,
       /* make video fullscreen: */
       sink->dst_rect.x, sink->dst_rect.y, sink->dst_rect.w, sink->dst_rect.h,
       /* source/cropping coordinates are given in Q16 */
@@ -286,6 +278,7 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
 
 out:
   GST_INFO_OBJECT (sink, "exit");
+  /* TODO: we probably want to unref after displaying the *next* frame */
   gst_buffer_unref (buf);
   return flow_ret;
 
@@ -435,7 +428,7 @@ gst_kms_sink_reset (GstKMSSink * sink)
   memset (&sink->conn, 0, sizeof (struct connector));
 
   if (sink->pool) {
-    gst_ducati_buffer_pool_destroy (sink->pool);
+    gst_drm_buffer_pool_destroy (sink->pool);
     sink->pool = NULL;
   }
 
@@ -566,27 +559,23 @@ gst_kms_sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
       " and offset %" G_GUINT64_FORMAT, size, caps, offset);
 
   /* initialize the buffer pool if not initialized yet */
-  if (G_UNLIKELY (!sink->pool || sink->pool->size != size)) {
-    GstDucatiBufferAllocator *allocator;
+  if (G_UNLIKELY (!sink->pool ||
+      gst_drm_buffer_pool_size (sink->pool) != size)) {
     GstVideoFormat format;
     gint width, height;
 
     if (sink->pool) {
       GST_INFO_OBJECT (sink, "in buffer alloc, pool->size != size");
-      gst_ducati_buffer_pool_destroy (sink->pool);
+      gst_drm_buffer_pool_destroy (sink->pool);
       sink->pool = NULL;
     }
 
     gst_video_format_parse_caps (caps, &format, &width, &height);
-    allocator =
-        GST_DUCATI_BUFFER_ALLOCATOR (gst_ducati_kms_buffer_allocator_new
-        (sink->dev));
     size = gst_video_format_get_size (format, width, height);
-    sink->pool = gst_ducati_buffer_pool_new (GST_ELEMENT (sink),
-        allocator, caps, size);
-    gst_mini_object_unref (GST_MINI_OBJECT (allocator));
+    sink->pool = gst_drm_buffer_pool_new (GST_ELEMENT (sink),
+        sink->fd, caps, size);
   }
-  *buf = GST_BUFFER_CAST (gst_ducati_buffer_pool_get (sink->pool, *buf, FALSE));
+  *buf = GST_BUFFER_CAST (gst_drm_buffer_pool_get (sink->pool, FALSE));
 
 beach:
   return ret;
