@@ -239,7 +239,7 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
     GstVideoRectangle dest = { 0 };
 
     if (!gst_drm_connector_find_mode_and_plane (sink->fd,
-            sink->src_rect.w, sink->src_rect.h,
+            sink->dev, sink->src_rect.w, sink->src_rect.h,
             sink->resources, sink->plane_resources, &sink->conn, &sink->plane))
       goto connector_not_found;
 
