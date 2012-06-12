@@ -1,5 +1,5 @@
 
-SUBDIRS = interfaces signalprocessor video basecamerabinsrc codecparsers
+SUBDIRS = interfaces signalprocessor video basecamerabinsrc codecparsers drm
 
 noinst_HEADERS = gst-i18n-plugin.h gettext.h
 
