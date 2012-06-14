@@ -1047,6 +1047,14 @@ AG_GST_CHECK_FEATURE(KMS, [kmssink], kms, [
   AC_SUBST(DRM_LIBS)
 ])
 
+dnl *** dri2 ***
+translit(dnm, m, l) AM_CONDITIONAL(USE_DRI2, true)
+AG_GST_CHECK_FEATURE(DRI2, [dri2videosink], dri2, [
+  PKG_CHECK_MODULES([DRI2], [dri2 libdrm libdrm_omap], HAVE_DRI2=yes, HAVE_DRI2=no)
+  AC_SUBST(DRM_CFLAGS)
+  AC_SUBST(DRM_LIBS)
+])
+
 dnl *** ladspa ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_LADSPA, true)
 AG_GST_CHECK_FEATURE(LADSPA, [ladspa], ladspa, [
@@ -1812,6 +1820,7 @@ AM_CONDITIONAL(USE_GSM, false)
 AM_CONDITIONAL(USE_JP2K, false)
 AM_CONDITIONAL(USE_KATE, false)
 AM_CONDITIONAL(USE_KMS, false)
+AM_CONDITIONAL(USE_DRI2, false)
 AM_CONDITIONAL(USE_TIGER, false)
 AM_CONDITIONAL(USE_LADSPA, false)
 AM_CONDITIONAL(USE_LV2, false)
@@ -2023,6 +2032,7 @@ sys/dshowvideosink/Makefile
 sys/dvb/Makefile
 sys/fbdev/Makefile
 sys/kms/Makefile
+sys/dri2/Makefile
 sys/linsys/Makefile
 sys/osxvideo/Makefile
 sys/qtwrapper/Makefile
