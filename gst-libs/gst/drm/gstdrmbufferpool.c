@@ -27,26 +27,27 @@
 #include "config.h"
 #endif
 
+#include <string.h>
+
+#include <gst/dmabuf/dmabuf.h>
+
 #include "gstdrmbufferpool.h"
-#include "drmbufferpool.h"
+
+static GstDRMBuffer * gst_drm_buffer_new (GstDRMBufferPool * pool);
+static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
+    GstDRMBufferPool * pool);
 
 /*
  * GstDRMBufferPool:
  */
 
-typedef GstDRMBufferPool GstDRMDRMBufferPool;
-typedef GstDRMBufferPoolClass GstDRMDRMBufferPoolClass;
-
-G_DEFINE_TYPE (GstDRMDRMBufferPool, gst_drm_buffer_pool,
+G_DEFINE_TYPE (GstDRMBufferPool, gst_drm_buffer_pool,
     GST_TYPE_MINI_OBJECT);
 
-GstDRMBufferPool *
-gst_drm_buffer_pool_new (GstElement * element,
-    int fd, GstCaps * caps, guint size)
+void
+gst_drm_buffer_pool_initialize (GstDRMBufferPool * self,
+    GstElement * element, int fd, GstCaps * caps, guint size)
 {
-  GstDRMBufferPool *self = (GstDRMBufferPool *)
-      gst_mini_object_new (GST_TYPE_DRM_BUFFER_POOL);
-
   self->element = gst_object_ref (element);
   self->fd   = fd;
   self->dev  = omap_device_new (fd);
@@ -57,6 +58,16 @@ gst_drm_buffer_pool_new (GstElement * element,
   self->tail = NULL;
   self->lock = g_mutex_new ();
   self->running = TRUE;
+}
+
+GstDRMBufferPool *
+gst_drm_buffer_pool_new (GstElement * element,
+    int fd, GstCaps * caps, guint size)
+{
+  GstDRMBufferPool *self = (GstDRMBufferPool *)
+      gst_mini_object_new (GST_TYPE_DRM_BUFFER_POOL);
+
+  gst_drm_buffer_pool_initialize (self, element, fd, caps, size);
 
   return self;
 }
@@ -80,6 +91,7 @@ gst_drm_buffer_pool_set_caps (GstDRMBufferPool * self, GstCaps * caps)
 
     gst_structure_get_int (s, "width", &self->width);
     gst_structure_get_int (s, "height", &self->height);
+    gst_structure_get_fourcc (s, "format", &self->fourcc);
   } else {
     self->width = 0;
     self->height = 0;
@@ -151,7 +163,7 @@ gst_drm_buffer_pool_get (GstDRMBufferPool * self, gboolean force_alloc)
       if (self->head == NULL)
         self->tail = NULL;
     } else {
-      buf = gst_drm_buffer_new (self);
+      buf = GST_DRM_BUFFER_POOL_GET_CLASS (self)->buffer_alloc (self);
     }
     if (self->caps)
       gst_buffer_set_caps (GST_BUFFER (buf), self->caps);
@@ -163,7 +175,7 @@ gst_drm_buffer_pool_get (GstDRMBufferPool * self, gboolean force_alloc)
   return GST_BUFFER (buf);
 }
 
-gboolean
+static gboolean
 gst_drm_buffer_pool_put (GstDRMBufferPool * self, GstDRMBuffer * buf)
 {
   gboolean reuse = FALSE;
@@ -209,7 +221,8 @@ static void
 gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
 {
   GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (klass);
-
+  klass->buffer_alloc =
+      GST_DEBUG_FUNCPTR (gst_drm_buffer_new);
   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
       GST_DEBUG_FUNCPTR (gst_drm_buffer_pool_finalize);
 }
@@ -223,13 +236,28 @@ gst_drm_buffer_pool_init (GstDRMBufferPool * self)
  * GstDRMBuffer:
  */
 
+G_DEFINE_TYPE (GstDRMBuffer, gst_drm_buffer, GST_TYPE_BUFFER);
 
-typedef GstDRMBuffer GstDRMDRMBuffer;
-typedef GstDRMBufferClass GstDRMDRMBufferClass;
+void
+gst_drm_buffer_initialize (GstDRMBuffer * self,
+    GstDRMBufferPool * pool, struct omap_bo * bo)
+{
+  self->bo = bo;
 
-G_DEFINE_TYPE (GstDRMDRMBuffer, gst_drm_buffer, GST_TYPE_BUFFER);
+  GST_BUFFER_DATA (self) = omap_bo_map (self->bo);
+  GST_BUFFER_SIZE (self) = pool->size;
 
-GstDRMBuffer *
+  /* attach dmabuf handle to buffer so that elements from other
+   * plugins can access for zero copy hw accel:
+   */
+  // XXX buffer doesn't take ownership of the GstDmaBuf...
+  gst_buffer_set_dma_buf (GST_BUFFER (self),
+      gst_dma_buf_new (omap_bo_dmabuf (self->bo)));
+
+  gst_drm_buffer_set_pool (self, pool);
+}
+
+static GstDRMBuffer *
 gst_drm_buffer_new (GstDRMBufferPool * pool)
 {
   GstDRMBuffer *self = (GstDRMBuffer *)
@@ -240,23 +268,14 @@ gst_drm_buffer_new (GstDRMBufferPool * pool)
    * otherwise we might want some support for various different
    * drm drivers here:
    */
-  self->bo = omap_bo_new (pool->dev, pool->size, OMAP_BO_WC);
+  struct omap_bo *bo = omap_bo_new (pool->dev, pool->size, OMAP_BO_WC);
 
-  GST_BUFFER_DATA (self) = omap_bo_map (self->bo);
-  GST_BUFFER_SIZE (self) = pool->size;
-
-  /* attach dmabuf handle to buffer so that elements from other
-   * plugins can access for zero copy hw accel:
-   */
-  gst_buffer_set_dma_buf (GST_BUFFER (self),
-      gst_dma_buf_new (omap_bo_dmabuf (self->bo)));
-
-  gst_drm_buffer_set_pool (self, pool);
+  gst_drm_buffer_initialize (self, pool, bo);
 
   return self;
 }
 
-void
+static void
 gst_drm_buffer_set_pool (GstDRMBuffer * self, GstDRMBufferPool * pool)
 {
 
@@ -281,6 +300,11 @@ gst_drm_buffer_finalize (GstDRMBuffer * self)
   resuscitated = gst_drm_buffer_pool_put (pool, self);
   if (resuscitated)
     return;
+
+  if (GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup) {
+    GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup (
+        self->pool, self);
+  }
 
   GST_BUFFER_DATA (self) = NULL;
   omap_bo_del (self->bo);
