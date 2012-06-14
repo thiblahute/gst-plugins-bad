@@ -23,10 +23,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <tiler.h>
-#include <tilermem.h>
-#include <memmgr.h>
-
 #include <gst/gst.h>
 
 G_BEGIN_DECLS

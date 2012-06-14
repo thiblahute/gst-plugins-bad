@@ -36,39 +36,6 @@ plugin_init (GstPlugin * plugin)
       GST_TYPE_PVRVIDEOSINK);
 }
 
-void *
-gst_ducati_alloc_1d (gint sz)
-{
-  MemAllocBlock block = {
-    .pixelFormat = PIXEL_FMT_PAGE,
-    .dim.len = sz,
-  };
-  return MemMgr_Alloc (&block, 1);
-}
-
-void *
-gst_ducati_alloc_2d (gint width, gint height, guint * sz)
-{
-  MemAllocBlock block[] = { {
-          .pixelFormat = PIXEL_FMT_8BIT,
-          .dim = {.area = {
-                      .width = width,
-                      .height = ALIGN2 (height, 1),
-                  }},
-      .stride = 4096}, {
-        .pixelFormat = PIXEL_FMT_16BIT,
-        .dim = {.area = {
-                    .width = width,
-                    .height = ALIGN2 (height, 1) / 2,
-                }},
-      .stride = 4096}
-  };
-  if (sz) {
-    *sz = (4096 * ALIGN2 (height, 1) * 3) / 2;
-  }
-  return MemMgr_Alloc (block, 2);
-}
-
 /* PACKAGE: this is usually set by autotools depending on some _INIT macro
  * in configure.ac and then written into and defined in config.h, but we can
  * just set it ourselves here in case someone doesn't use autotools to

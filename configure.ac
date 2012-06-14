@@ -1422,9 +1422,11 @@ AG_GST_CHECK_FEATURE(OPUS, [opus], opus, [
 dnl *** pvr ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_PVR, true)
 AG_GST_CHECK_FEATURE(PVR, [pvrvideosink], pvr, [
-  PKG_CHECK_MODULES([PVR], [libtimemmgr], HAVE_PVR=yes, HAVE_PVR=no)
+  PKG_CHECK_MODULES([DRM], [libdrm, libdrm_omap], HAVE_PVR=yes, HAVE_PVR=no)
   AC_SUBST(PVR_CFLAGS)
   AC_SUBST(PVR_LIBS)
+  AC_SUBST(DRM_CFLAGS)
+  AC_SUBST(DRM_LIBS)
 ])
 
  AC_ARG_WITH([pvr-external-headers],

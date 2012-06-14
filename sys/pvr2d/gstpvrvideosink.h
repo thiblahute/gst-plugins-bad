@@ -25,7 +25,7 @@
 
 #include <gst/video/gstvideosink.h>
 #include <gst/video/video.h>
-#include "gstpvrbufferpool.h"
+#include <gst/drm/gstdrmbufferpool.h>
 
 #include <string.h>
 #include <math.h>
@@ -129,7 +129,7 @@ struct _GstPVRVideoSink
   GMutex *flow_lock;
 
   GMutex *pool_lock;
-  GstPvrBufferPool *buffer_pool;
+  GstDRMBufferPool *buffer_pool;
   gboolean pool_invalid;
   gint num_buffers;
   gboolean num_buffers_can_change;
@@ -155,6 +155,7 @@ struct _GstPVRVideoSink
   GstBuffer *current_buffer;
   PVR2DRECT crop;
   WSEGLDrawableParams render_params;
+  int drm_fd;
 };
 
 struct _GstPVRVideoSinkClass
