@@ -276,11 +276,8 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * inbuf)
   if (ret)
     goto set_plane_failed;
 
-  if (sink->last_buf)
-    gst_buffer_unref (sink->last_buf);
-
-  sink->last_buf = sink->display_buf;
-  sink->display_buf = gst_buffer_ref (buf);
+  gst_buffer_replace (&sink->last_buf, sink->display_buf);
+  gst_buffer_replace (&sink->display_buf, buf);
 
 out:
   GST_INFO_OBJECT (sink, "exit");
@@ -453,15 +450,8 @@ gst_kms_sink_reset (GstKMSSink * sink)
     sink->resources = NULL;
   }
 
-  if (sink->last_buf) {
-    gst_buffer_unref (sink->last_buf);
-    sink->last_buf = NULL;
-  }
-
-  if (sink->display_buf) {
-    gst_buffer_unref (sink->display_buf);
-    sink->display_buf = NULL;
-  }
+  gst_buffer_replace (&sink->last_buf, NULL);
+  gst_buffer_replace (&sink->display_buf, NULL);
 
   if (sink->dev) {
     omap_device_del (sink->dev);
