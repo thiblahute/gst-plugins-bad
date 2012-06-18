@@ -13,13 +13,14 @@ libgstkmssink_la_CFLAGS = \
 	$(DRM_CFLAGS)
 
 libgstkmssink_la_LIBADD = \
+	$(GST_PLUGINS_BASE_LIBS) \
 	$(GST_BASE_LIBS) \
+	$(GST_LIBS) \
+	$(DRM_LIBS) \
 	-lgstvideo-$(GST_MAJORMINOR) \
 	-lgstbasevideo-$(GST_MAJORMINOR) \
 	-lgstdmabuf-$(GST_MAJORMINOR) \
-	-lgstdrm-$(GST_MAJORMINOR) \
-	$(GST_LIBS) \
-	$(DRM_LIBS)
+	$(top_builddir)/gst-libs/gst/drm/libgstdrm-$(GST_MAJORMINOR).la
 
 libgstkmssink_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstkmssink_la_LIBTOOLFLAGS = --tag=disable-static
