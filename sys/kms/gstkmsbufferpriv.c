@@ -39,10 +39,12 @@
 #include "gstkmsbufferpriv.h"
 
 #define GST_KMS_BUFFER_PRIV_QUARK gst_kms_buffer_priv_quark_get_type()
-static GST_BOILERPLATE_QUARK(GstKMSBufferPriv, gst_kms_buffer_priv_quark);
+static GST_BOILERPLATE_QUARK (GstKMSBufferPriv, gst_kms_buffer_priv_quark);
 
 #define KMS_BUFFER_PRIV_QUARK kms_buffer_priv_quark_get_type()
-static GST_BOILERPLATE_QUARK(KMSBufferPriv, kms_buffer_priv_quark);
+static GST_BOILERPLATE_QUARK (KMSBufferPriv, kms_buffer_priv_quark);
+
+GST_BOILERPLATE_MINI_OBJECT (GstKMSBufferPriv, gst_kms_buffer_priv);
 
 static void
 set_kms_buffer_priv (GstBuffer * buf, GstKMSBufferPriv * priv)
@@ -86,10 +88,8 @@ gst_kms_buffer_priv_class_init (GstKMSBufferPrivClass * klass)
   GST_MINI_OBJECT_CLASS (klass)->finalize = gst_kms_buffer_priv_finalize;
 }
 
-GST_BOILERPLATE_MINI_OBJECT(GstKMSBufferPriv, gst_kms_buffer_priv);
-
 static int
-create_fb (GstKMSBufferPriv * priv, GstKMSSink *sink)
+create_fb (GstKMSBufferPriv * priv, GstKMSSink * sink)
 {
   /* TODO get format, etc from caps.. and query device for
    * supported formats, and make this all more flexible to
@@ -98,13 +98,13 @@ create_fb (GstKMSBufferPriv * priv, GstKMSSink *sink)
   uint32_t fourcc = GST_MAKE_FOURCC ('N', 'V', '1', '2');
 
   uint32_t handles[4] = {
-      omap_bo_handle (priv->bo), omap_bo_handle (priv->bo),
+    omap_bo_handle (priv->bo), omap_bo_handle (priv->bo),
   };
   uint32_t pitches[4] = {
-      sink->input_width, sink->input_width,
+    sink->input_width, sink->input_width,
   };
   uint32_t offsets[4] = {
-      0, pitches[0] * sink->input_height
+    0, pitches[0] * sink->input_height
   };
 
   return drmModeAddFB2 (priv->fd, sink->input_width, sink->input_height,
@@ -112,7 +112,7 @@ create_fb (GstKMSBufferPriv * priv, GstKMSSink *sink)
 }
 
 GstKMSBufferPriv *
-gst_kms_buffer_priv (GstKMSSink *sink, GstBuffer * buf)
+gst_kms_buffer_priv (GstKMSSink * sink, GstBuffer * buf)
 {
   GstKMSBufferPriv *priv = get_kms_buffer_priv (buf);
   if (!priv) {
