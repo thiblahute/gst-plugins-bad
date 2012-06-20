@@ -23,7 +23,8 @@ libgstdrm_@GST_MAJORMINOR@_la_LIBADD = \
 	$(DRM_LIBS) \
 	$(GST_PLUGINS_BASE_LIBS) \
 	$(GST_BASE_LIBS) \
-	$(GST_LIBS)
+	$(GST_LIBS) \
+	-lgstdmabuf-$(GST_MAJORMINOR)
 
 libgstdrm_@GST_MAJORMINOR@_la_LDFLAGS = \
 	$(DRM_LDFLAGS) \
