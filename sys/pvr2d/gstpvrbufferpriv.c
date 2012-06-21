@@ -34,6 +34,9 @@
 #include "gstpvrvideosink.h"
 #include "gstpvrbufferpriv.h"
 
+#define LINUX
+#include <dri2_omap_ws.h>
+
 #define GST_PVR_BUFFER_PRIV_QUARK gst_pvr_buffer_priv_quark_get_type()
 static GST_BOILERPLATE_QUARK (GstPVRBufferPriv, gst_pvr_buffer_priv_quark);
 
@@ -71,6 +74,7 @@ gst_pvr_buffer_priv_finalize (GstMiniObject * mini_obj)
   GstPVRBufferPriv *priv = (GstPVRBufferPriv *) mini_obj;
 
   PVR2DMemFree (priv->context, priv->mem_info);
+  gst_display_handle_unref (priv->display_handle);
 }
 
 static void
@@ -98,7 +102,10 @@ gst_pvr_buffer_priv (GstPVRVideoSink * sink, GstBuffer * buf)
 
     priv = (GstPVRBufferPriv *) gst_mini_object_new (GST_TYPE_PVR_BUFFER_PRIV);
 
-    priv->context = sink->dcontext->pvr_context;
+    priv->display_handle =
+        gst_display_handle_ref (sink->dcontext->gst_display_handle);
+    priv->context =
+        ((DRI2Display *) priv->display_handle->display_handle)->hContext;
     if (PVR2DImportDmaBuf (priv->context, gst_dma_buf_get_fd (dmabuf),
             &priv->mem_info)) {
       GST_ERROR_OBJECT (sink, "could not import bo: %s", strerror (errno));
@@ -107,6 +114,9 @@ gst_pvr_buffer_priv (GstPVRVideoSink * sink, GstBuffer * buf)
     }
 
     set_pvr_buffer_priv (buf, priv);
+
+    /* set_pvr_buffer_priv will ref priv via gst_structure_id_new */
+    gst_mini_object_unref (GST_MINI_OBJECT_CAST (priv));
   }
   return priv;
 }

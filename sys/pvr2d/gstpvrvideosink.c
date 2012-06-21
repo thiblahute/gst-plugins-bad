@@ -109,6 +109,33 @@ static GstVideoSinkClass *parent_class = NULL;
 #define GST_PVRVIDEO_BUFFER_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_PVRVIDEO_BUFFER, GstPVRVideoBufferClass))
 
 
+static GstDisplayHandle *
+gst_display_handle_new (WSEGLDrawableHandle dh, const WSEGL_FunctionTable * ft)
+{
+  GstDisplayHandle *display_handle = g_slice_new0 (GstDisplayHandle);
+  display_handle->refcount = 1;
+  display_handle->wsegl_table = ft;
+  display_handle->display_handle = dh;
+  return display_handle;
+}
+
+GstDisplayHandle *
+gst_display_handle_ref (GstDisplayHandle * display_handle)
+{
+  g_atomic_int_inc (&display_handle->refcount);
+  return display_handle;
+}
+
+void
+gst_display_handle_unref (GstDisplayHandle * display_handle)
+{
+  if (g_atomic_int_dec_and_test (&display_handle->refcount)) {
+    display_handle->wsegl_table->pfnWSEGL_CloseDisplay (display_handle->
+        display_handle);
+    g_slice_free (GstDisplayHandle, display_handle);
+  }
+}
+
 static const char *
 pvr2dstrerr (PVR2DERROR err)
 {
@@ -220,8 +247,8 @@ pvr_recreate_drawable (GstPVRVideoSink * pvrvideosink)
 
   if (dcontext->drawable_handle) {
     glerror =
-        dcontext->wsegl_table->pfnWSEGL_DeleteDrawable (dcontext->
-        drawable_handle);
+        dcontext->wsegl_table->
+        pfnWSEGL_DeleteDrawable (dcontext->drawable_handle);
     if (glerror) {
       GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, FAILED,
           ("error deleting drawable"), ("%s", wseglstrerr (glerror)));
@@ -230,7 +257,8 @@ pvr_recreate_drawable (GstPVRVideoSink * pvrvideosink)
   }
 
   glerror =
-      dcontext->wsegl_table->pfnWSEGL_CreateWindowDrawable (dcontext->
+      dcontext->wsegl_table->
+      pfnWSEGL_CreateWindowDrawable (dcontext->gst_display_handle->
       display_handle, dcontext->glconfig, &dcontext->drawable_handle,
       (NativeWindowType) pvrvideosink->xwindow->window, &dcontext->rotation);
   if (glerror) {
@@ -248,8 +276,9 @@ pvr_get_drawable_params (GstPVRVideoSink * pvrvideosink)
   GstDrawContext *dcontext = pvrvideosink->dcontext;
 
   glerror =
-      dcontext->wsegl_table->pfnWSEGL_GetDrawableParameters (dcontext->
-      drawable_handle, &source_params, &pvrvideosink->render_params);
+      dcontext->wsegl_table->
+      pfnWSEGL_GetDrawableParameters (dcontext->drawable_handle, &source_params,
+      &pvrvideosink->render_params);
 
   if (glerror == WSEGL_BAD_DRAWABLE) {
     /* this can happen if window size changes, window is redirected/
@@ -530,6 +559,7 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
   int eventBase, errorBase, major, minor;
   char *driver, *device;
   int fd = -1;
+  WSEGLDisplayHandle display_handle;
 
   dcontext = g_new0 (GstDrawContext, 1);
   dcontext->x_lock = g_mutex_new ();
@@ -577,12 +607,15 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
     goto invalid_display;
 
   glerror = dcontext->wsegl_table->pfnWSEGL_InitialiseDisplay (
-      (NativeDisplayType) dcontext->x_display, &dcontext->display_handle,
+      (NativeDisplayType) dcontext->x_display, &display_handle,
       &glcaps, &dcontext->glconfig);
   if (glerror)
     goto wsegl_init_error;
 
-  displayImpl = (DRI2Display *) dcontext->display_handle;
+  dcontext->gst_display_handle =
+      gst_display_handle_new (display_handle, dcontext->wsegl_table);
+
+  displayImpl = (DRI2Display *) display_handle;
   dcontext->pvr_context = displayImpl->hContext;
 
 #if 0
@@ -946,13 +979,13 @@ gst_pvrvideosink_destroy_drawable (GstPVRVideoSink * pvrvideosink)
 {
   if (pvrvideosink->dcontext != NULL) {
     if (pvrvideosink->dcontext->drawable_handle)
-      pvrvideosink->dcontext->wsegl_table->
-          pfnWSEGL_DeleteDrawable (pvrvideosink->dcontext->drawable_handle);
+      pvrvideosink->dcontext->
+          wsegl_table->pfnWSEGL_DeleteDrawable (pvrvideosink->dcontext->
+          drawable_handle);
 
-#if 0
-    pvrvideosink->dcontext->wsegl_table->
-        pfnWSEGL_CloseDisplay (pvrvideosink->dcontext->display_handle);
-#endif
+    gst_display_handle_unref (pvrvideosink->dcontext->gst_display_handle);
+    pvrvideosink->dcontext->gst_display_handle = NULL;
+    pvrvideosink->dcontext->pvr_context = NULL;
   }
 }
 
@@ -1459,6 +1492,9 @@ import_buf:
   if (buf_priv == NULL) {
     /* FIXME: make this an error */
     GST_ERROR_OBJECT (pvrvideosink, "dropping frame");
+    if (newbuf) {
+      gst_buffer_unref (newbuf);
+    }
     return GST_FLOW_OK;
   }
 

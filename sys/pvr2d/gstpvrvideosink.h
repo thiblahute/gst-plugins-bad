@@ -45,6 +45,7 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_PVRVIDEOSINK))
 #define GST_IS_PVRVIDEOSINK_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_PVRVIDEOSINK))
+typedef struct _GstDisplayHandle GstDisplayHandle;
 typedef struct _GstDrawContext GstDrawContext;
 typedef struct _GstXWindow GstXWindow;
 
@@ -53,6 +54,13 @@ typedef struct _GstPVRVideoBufferClass GstPVRVideoBufferClass;
 
 typedef struct _GstPVRVideoSink GstPVRVideoSink;
 typedef struct _GstPVRVideoSinkClass GstPVRVideoSinkClass;
+
+struct _GstDisplayHandle
+{
+  gint refcount;
+  const WSEGL_FunctionTable *wsegl_table;
+  WSEGLDisplayHandle display_handle;
+};
 
 struct _GstDrawContext
 {
@@ -72,7 +80,7 @@ struct _GstDrawContext
   /* WSEGL */
   const WSEGL_FunctionTable *wsegl_table;
 
-  WSEGLDisplayHandle display_handle;
+  GstDisplayHandle *gst_display_handle;
   const WSEGLCaps **glcaps;
   WSEGLConfig *glconfig;
   WSEGLDrawableHandle drawable_handle;
@@ -164,6 +172,9 @@ struct _GstPVRVideoSinkClass
 };
 
 GType gst_pvrvideosink_get_type (void);
+
+GstDisplayHandle * gst_display_handle_ref (GstDisplayHandle * display_handle);
+void gst_display_handle_unref (GstDisplayHandle * display_handle);
 
 G_END_DECLS
 #endif /* __GST_PVRVIDEOSINK_H__ */

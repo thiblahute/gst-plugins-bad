@@ -54,6 +54,7 @@ struct _GstPVRBufferPriv
   GstMiniObject parent;
 
   PVR2DCONTEXTHANDLE context;
+  GstDisplayHandle *display_handle;
   PVR2DMEMINFO *mem_info;
 };
 
