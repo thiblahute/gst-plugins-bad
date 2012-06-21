@@ -101,7 +101,7 @@ create_fb (GstKMSBufferPriv * priv, GstKMSSink * sink)
     omap_bo_handle (priv->bo), omap_bo_handle (priv->bo),
   };
   uint32_t pitches[4] = {
-    sink->input_width, sink->input_width,
+    GST_ROUND_UP_4 (sink->input_width), GST_ROUND_UP_4 (sink->input_width),
   };
   uint32_t offsets[4] = {
     0, pitches[0] * sink->input_height
