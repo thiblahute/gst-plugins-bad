@@ -675,7 +675,7 @@ invalid_display:
 wsegl_init_error:
   GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
       ("Failed to initialize display"), ("%s", wseglstrerr (glerror)));
-  return NULL;
+  goto fail;
 
 dri_device_error:
   GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
@@ -692,6 +692,9 @@ fail:
     close (fd);
     pvrvideosink->drm_fd = -1;
   }
+
+  g_mutex_free (dcontext->x_lock);
+  g_free (dcontext);
 
   return NULL;
 }
