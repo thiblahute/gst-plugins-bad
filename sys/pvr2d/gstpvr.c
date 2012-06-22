@@ -32,7 +32,7 @@ plugin_init (GstPlugin * plugin)
   GST_DEBUG_CATEGORY_INIT (gst_debug_pvrvideosink, "pvrvideosink", 0,
       "pvrvideosink");
 
-  return gst_element_register (plugin, "pvrvideosink", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "pvrvideosink", GST_RANK_PRIMARY + 1,
       GST_TYPE_PVRVIDEOSINK);
 }
 
