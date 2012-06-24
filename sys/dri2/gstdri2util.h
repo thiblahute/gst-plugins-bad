@@ -84,8 +84,18 @@ void gst_dri2context_delete (GstDRI2Context *dcontext);
  * GstDRI2Window
  */
 
+GType gst_dri2window_get_type (void);
+#define GST_TYPE_DRI2WINDOW (gst_dri2window_get_type())
+#define GST_IS_DRI2WINDOW(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_DRI2WINDOW))
+#define GST_DRI2WINDOW(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_DRI2WINDOW, \
+                               GstDRI2Window))
+
 struct _GstDRI2Window
 {
+  GstMiniObject parent;
+
   GstDRI2Context *dcontext;
 
   Window window;

@@ -33,6 +33,8 @@
  * GstDRI2BufferPool:
  */
 
+static GstMiniObjectClass * gst_dri2bufferpool_parent_class = NULL;
+
 G_DEFINE_TYPE (GstDRI2BufferPool, gst_dri2_buffer_pool,
     GST_TYPE_DRM_BUFFER_POOL);
 
@@ -46,6 +48,7 @@ gst_dri2_buffer_pool_new (GstDRI2Window * xwindow,
   gst_drm_buffer_pool_initialize (GST_DRM_BUFFER_POOL (self),
       xwindow->dcontext->elem, fd, caps, size);
 
+  gst_mini_object_ref (GST_MINI_OBJECT (xwindow));
   self->xwindow = xwindow;
 
   return self;
@@ -58,6 +61,8 @@ gst_dri2_buffer_alloc (GstDRMBufferPool * pool)
   GstDRI2Buffer *self = (GstDRI2Buffer *)
       gst_mini_object_new (GST_TYPE_DRI2_BUFFER);
   struct omap_bo *bo;
+
+  gst_mini_object_ref (GST_MINI_OBJECT (pool));
 
   self->dri2buf = gst_dri2window_get_dri2buffer (dri2pool->xwindow,
       pool->width, pool->height, pool->fourcc);
@@ -79,6 +84,15 @@ gst_dri2_buffer_cleanup (GstDRMBufferPool * pool, GstDRMBuffer * buf)
   gst_dri2window_free_dri2buffer (
       GST_DRI2_BUFFER_POOL (pool)->xwindow,
       GST_DRI2_BUFFER (buf)->dri2buf);
+  gst_mini_object_unref (GST_MINI_OBJECT (pool));
+}
+
+static void
+gst_dri2_buffer_pool_finalize (GstDRMBufferPool * pool)
+{
+  gst_mini_object_unref (GST_MINI_OBJECT (GST_DRI2_BUFFER_POOL(pool)->xwindow));
+  GST_MINI_OBJECT_CLASS (gst_dri2bufferpool_parent_class)->finalize (GST_MINI_OBJECT
+      (pool));
 }
 
 static void
@@ -88,6 +102,9 @@ gst_dri2_buffer_pool_class_init (GstDRI2BufferPoolClass * klass)
       GST_DEBUG_FUNCPTR (gst_dri2_buffer_alloc);
   GST_DRM_BUFFER_POOL_CLASS (klass)->buffer_cleanup =
       GST_DEBUG_FUNCPTR (gst_dri2_buffer_cleanup);
+  GST_MINI_OBJECT_CLASS (klass)->finalize =
+      (GstMiniObjectFinalizeFunction) GST_DEBUG_FUNCPTR (gst_dri2_buffer_pool_finalize);
+  gst_dri2bufferpool_parent_class = g_type_class_peek_parent (klass);
 }
 
 static void
