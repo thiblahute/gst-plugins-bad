@@ -138,7 +138,10 @@ gst_dri2context_calculate_pixel_aspect_ratio (GstDRI2Context * dcontext)
   GST_DEBUG ("Decided on index %d (%d/%d)", index,
       par[index][0], par[index][1]);
 
-  g_free (dcontext->par);
+  if (dcontext->par) {
+    g_value_unset (dcontext->par);
+    g_free (dcontext->par);
+  }
   dcontext->par = g_new0 (GValue, 1);
   g_value_init (dcontext->par, GST_TYPE_FRACTION);
   gst_value_set_fraction (dcontext->par, par[index][0], par[index][1]);
@@ -252,7 +255,10 @@ fail:
 void
 gst_dri2context_delete (GstDRI2Context *dcontext)
 {
-  g_free (dcontext->par);
+  if (dcontext->par) {
+    g_value_unset (dcontext->par);
+    g_free (dcontext->par);
+  }
 
   g_mutex_lock (dcontext->x_lock);
   XCloseDisplay (dcontext->x_display);
