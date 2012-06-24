@@ -69,6 +69,8 @@ struct _GstDRI2Context
   Display *x_display;
   gint screen_num;
   gulong black;
+  char *driver;
+  char *device;
 
   int drm_fd;
   struct omap_device *dev;
