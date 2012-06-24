@@ -32,6 +32,8 @@
 #include "gstdri2util.h"
 #include "gstdri2bufferpool.h"
 
+static GstMiniObjectClass *dri2window_parent_class = NULL;
+
 static Bool WireToEvent (Display * dpy, XExtDisplayInfo * info,
     XEvent * event, xEvent * wire)
 {
@@ -301,7 +303,7 @@ gst_dri2window_new_from_handle (GstDRI2Context *dcontext, XID xwindow_id)
   GstDRI2Window *xwindow;
   XWindowAttributes attr;
 
-  xwindow = g_new0 (GstDRI2Window, 1);
+  xwindow = (GstDRI2Window *)gst_mini_object_new (GST_TYPE_DRI2WINDOW);
   xwindow->dcontext = dcontext;
   xwindow->window = xwindow_id;
   xwindow->pool_lock = g_mutex_new ();
@@ -376,6 +378,20 @@ gst_dri2window_new (GstDRI2Context * dcontext, gint width, gint height)
 void
 gst_dri2window_delete (GstDRI2Window * xwindow)
 {
+  g_mutex_lock (xwindow->pool_lock);
+  xwindow->pool_valid = FALSE;
+  if (xwindow->buffer_pool) {
+    gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
+    xwindow->buffer_pool = NULL;
+  }
+  g_mutex_unlock (xwindow->pool_lock);
+
+  gst_mini_object_unref (GST_MINI_OBJECT (xwindow));
+}
+
+static void
+gst_dri2window_finalize (GstDRI2Window * xwindow)
+{
   GstDRI2Context *dcontext = xwindow->dcontext;
 
   g_mutex_lock (xwindow->pool_lock);
@@ -408,7 +424,8 @@ gst_dri2window_delete (GstDRI2Window * xwindow)
 
   g_mutex_unlock (dcontext->x_lock);
 
-  g_free (xwindow);
+  GST_MINI_OBJECT_CLASS (dri2window_parent_class)->finalize (GST_MINI_OBJECT
+      (xwindow));
 }
 
 /* call with x_lock held */
@@ -639,4 +656,32 @@ gst_dri2window_free_dri2buffer (GstDRI2Window * xwindow, DRI2Buffer * dri2buf)
   get_buffer (xwindow, dri2buf->attachment, 0, 0, 0);
   free (xwindow->dri2bufs[idx]);
   xwindow->dri2bufs[idx] = NULL;
+}
+
+static void
+gst_dri2window_class_init (gpointer g_class, gpointer class_data)
+{
+  GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (g_class);
+
+  dri2window_parent_class = g_type_class_peek_parent (g_class);
+
+  mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
+      GST_DEBUG_FUNCPTR (gst_dri2window_finalize);
+}
+
+GType
+gst_dri2window_get_type (void)
+{
+  static GType type;
+
+  if (G_UNLIKELY (type == 0)) {
+    static const GTypeInfo info = {
+      .class_size = sizeof (GstMiniObjectClass),
+      .class_init = gst_dri2window_class_init,
+      .instance_size = sizeof (GstDRI2Window),
+    };
+    type = g_type_register_static (GST_TYPE_MINI_OBJECT,
+        "GstDRI2Window", &info, 0);
+  }
+  return type;
 }
