@@ -157,9 +157,8 @@ gst_dri2context_new (GstElement * elem)
   Window root;
   drm_magic_t magic;
   int eventBase, errorBase, major, minor;
-  char *driver, *device;
-  unsigned int i, nformats, *formats;
-  int fd;
+  unsigned int i, nformats, *formats = NULL;
+  int fd = -1;
 
   dcontext = g_new0 (GstDRI2Context, 1);
   dcontext->elem = elem;
@@ -191,15 +190,15 @@ gst_dri2context_new (GstElement * elem)
       DefaultScreen (dcontext->x_display));
 
   if (!DRI2Connect (dcontext->x_display, root,
-      DRI2DriverXV, &driver, &device)) {
+      DRI2DriverXV, &dcontext->driver, &dcontext->device)) {
     GST_ERROR_OBJECT (elem, "DRI2Connect failed");
     goto fail;
   }
 
   GST_DEBUG_OBJECT (elem, "DRI2Connect: driver=%s, device=%s",
-      driver, device);
+      dcontext->driver, dcontext->device);
 
-  fd = open (device, O_RDWR);
+  fd = open (dcontext->device, O_RDWR);
   if (fd < 0) {
     GST_ERROR_OBJECT (elem, "open failed");
     goto fail;
@@ -248,7 +247,14 @@ gst_dri2context_new (GstElement * elem)
   return dcontext;
 
 fail:
-  /* XXX: release resources */
+  free(formats);
+  if (dcontext->dev)
+    omap_device_del (dcontext->dev);
+
+  /* TODO: the code in _delete uses drmClose, but the fd is from open(2) ?? */
+  if (fd >= 0)
+    drmClose (fd);
+
   return NULL;
 }
 
@@ -267,6 +273,9 @@ gst_dri2context_delete (GstDRI2Context *dcontext)
 
   omap_device_del (dcontext->dev);
   drmClose (dcontext->drm_fd);
+
+  XFree (dcontext->driver);
+  XFree (dcontext->device);
 
   g_free (dcontext);
 }
