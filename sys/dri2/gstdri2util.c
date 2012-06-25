@@ -167,6 +167,11 @@ gst_dri2context_new (GstElement * elem)
   dcontext->x_lock = g_mutex_new ();
 
   dcontext->x_display = XOpenDisplay (NULL);
+  if (!dcontext->x_display) {
+    GST_ERROR_OBJECT (elem, "Failed to open X display");
+    goto fail;
+  }
+
   if (!DRI2InitDisplay(dcontext->x_display, &ops)) {
     GST_ERROR_OBJECT (elem, "DRI2InitDisplay failed");
     goto fail;
