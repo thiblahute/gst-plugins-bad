@@ -538,17 +538,9 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
       GST_DEBUG_OBJECT (xwindow->dcontext->elem,
           "slow-path.. I got a %s so I need to memcpy",
           g_type_name (G_OBJECT_TYPE (buf)));
-#if 0 // XXX
       memcpy (GST_BUFFER_DATA (newbuf),
           GST_BUFFER_DATA (buf),
           MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
-#else
-      GST_DEBUG_OBJECT (xwindow->dcontext->elem,
-          "stubbed: memcpy(%p, %p, %d)",
-          GST_BUFFER_DATA (newbuf),
-          GST_BUFFER_DATA (buf),
-          MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
-#endif
     }
   }
 
