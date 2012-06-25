@@ -257,6 +257,9 @@ fail:
   if (fd >= 0)
     drmClose (fd);
 
+  g_mutex_free (dcontext->x_lock);
+  g_free (dcontext);
+
   return NULL;
 }
 
