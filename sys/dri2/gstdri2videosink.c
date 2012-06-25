@@ -972,6 +972,7 @@ gst_dri2videosink_reset (GstDRI2VideoSink * self)
 
   gst_buffer_replace (&self->last_buf, NULL);
   gst_buffer_replace (&self->display_buf, NULL);
+  gst_caps_replace (&self->current_caps, NULL);
 
   self->render_rect.x = self->render_rect.y = 0;
   self->render_rect.w = self->render_rect.h = 0;
