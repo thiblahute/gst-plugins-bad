@@ -79,11 +79,12 @@ static const DRI2EventOps ops = {
 static DRI2Buffer * get_buffer (GstDRI2Window * xwindow, guint attach,
     gint width, gint height, guint32 format);
 
-static Bool is_fourcc(unsigned int val)
+static Bool is_fourcc(guint32 val)
 {
-  char *str = (char *)&val;
-  return isalnum(str[0]) && isalnum(str[1]) &&
-      isalnum(str[2]) && isalnum(str[3]);
+  return g_ascii_isalnum ((val >> 24) & 0xff)
+      && g_ascii_isalnum ((val >> 16) & 0xff)
+      && g_ascii_isalnum ((val >> 8) & 0xff)
+      && g_ascii_isalnum ((val >> 0) & 0xff);
 }
 
 /*
