@@ -213,6 +213,7 @@ gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
   if (self->caps)
     gst_caps_unref (self->caps);
   gst_object_unref (self->element);
+  omap_device_del (self->dev);
   GST_MINI_OBJECT_CLASS (gst_drm_buffer_pool_parent_class)->finalize
       (GST_MINI_OBJECT (self));
 }
