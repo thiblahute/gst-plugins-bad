@@ -34,9 +34,6 @@
 #include "gstpvrvideosink.h"
 #include "gstpvrbufferpriv.h"
 
-#define LINUX
-#include <dri2_omap_ws.h>
-
 #define GST_PVR_BUFFER_PRIV_QUARK gst_pvr_buffer_priv_quark_get_type()
 static GST_BOILERPLATE_QUARK (GstPVRBufferPriv, gst_pvr_buffer_priv_quark);
 
@@ -104,8 +101,7 @@ gst_pvr_buffer_priv (GstPVRVideoSink * sink, GstBuffer * buf)
 
     priv->display_handle =
         gst_display_handle_ref (sink->dcontext->gst_display_handle);
-    priv->context =
-        ((DRI2Display *) priv->display_handle->display_handle)->hContext;
+    priv->context = sink->dcontext->pvr_context;
     if (PVR2DImportDmaBuf (priv->context, gst_dma_buf_get_fd (dmabuf),
             &priv->mem_info)) {
       GST_ERROR_OBJECT (sink, "could not import bo: %s", strerror (errno));

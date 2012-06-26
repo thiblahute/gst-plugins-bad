@@ -32,12 +32,13 @@
 #include <gst/gstinfo.h>
 
 #define LINUX
-#include <dri2_omap_ws.h>
 #include <services.h>
 #include <img_defs.h>
 #include <servicesext.h>
 
+#include <X11/extensions/dri2.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define DEFAULT_QUEUE_SIZE 12
 #define DEFAULT_MIN_QUEUED_BUFS 1
@@ -550,7 +551,6 @@ static GstDrawContext *
 gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
 {
   GstDrawContext *dcontext;
-  DRI2Display *displayImpl;
   WSEGLError glerror;
   const WSEGLCaps *glcaps;
   PVR2DMISCDISPLAYINFO misc_display_info;
@@ -560,6 +560,9 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
   char *driver, *device;
   int fd = -1;
   WSEGLDisplayHandle display_handle;
+  PVR2DERROR pvr_error = PVR2D_OK;
+  PVR2DDEVICEINFO *device_info;
+  int num_devices, device_id;
 
   dcontext = g_new0 (GstDrawContext, 1);
   dcontext->x_lock = g_mutex_new ();
@@ -615,8 +618,29 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
   dcontext->gst_display_handle =
       gst_display_handle_new (display_handle, dcontext->wsegl_table);
 
-  displayImpl = (DRI2Display *) display_handle;
-  dcontext->pvr_context = displayImpl->hContext;
+  num_devices = PVR2DEnumerateDevices (NULL);
+  if (num_devices < 0) {
+    GST_WARNING_OBJECT (pvrvideosink, "Failed to enumerate devices, using 0");
+    device_id = 0;
+  } else if (num_devices == 0) {
+    GST_WARNING_OBJECT (pvrvideosink, "Device not found, ignoring and using 0");
+    device_id = 0;
+  } else {
+    device_info = g_malloc (num_devices * sizeof (PVR2DDEVICEINFO));
+    pvr_error = PVR2DEnumerateDevices (device_info);
+    if (pvr_error != PVR2D_OK) {
+      GST_WARNING_OBJECT (pvrvideosink, "Failed to enumerate devices, using 0");
+      device_id = 0;
+    } else {
+      device_id = device_info[0].ulDevID;
+    }
+    g_free (device_info);
+  }
+
+  /* TODO: what is PVR2D_XSERVER_PROC ? Use this instead of 0 as flags ? */
+  pvr_error = PVR2DCreateDeviceContext (device_id, &dcontext->pvr_context, 0);
+  if (pvr_error != PVR2D_OK)
+    goto create_device_context_error;
 
 #if 0
   /* XXX: PVR2DGetScreenMode and PVR2DGetMiscDisplayInfo fail with the new
@@ -677,12 +701,22 @@ wsegl_init_error:
       ("Failed to initialize display"), ("%s", wseglstrerr (glerror)));
   goto fail;
 
+create_device_context_error:
+  GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
+      ("Failed to create device context"), ("pvr error %d", pvr_error));
+  goto fail;
+
 dri_device_error:
   GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
       ("Could not open DRI device"), ("%s", strerror (errno)));
   goto fail;
 
 fail:
+  if (dcontext->pvr_context) {
+    PVR2DDestroyDeviceContext (dcontext->pvr_context);
+    dcontext->pvr_context = NULL;
+  }
+
   if (dcontext->x_display) {
     XCloseDisplay (dcontext->x_display);
     dcontext->x_display = NULL;
@@ -1910,6 +1944,8 @@ gst_pvrvideosink_dcontext_clear (GstPVRVideoSink * pvrvideosink)
   GST_OBJECT_UNLOCK (pvrvideosink);
 
   g_free (dcontext->par);
+
+  PVR2DDestroyDeviceContext (dcontext->pvr_context);
 
   g_mutex_lock (dcontext->x_lock);
   XCloseDisplay (dcontext->x_display);
