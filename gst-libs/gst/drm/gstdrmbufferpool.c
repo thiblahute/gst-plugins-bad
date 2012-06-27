@@ -103,7 +103,7 @@ gboolean
 gst_drm_buffer_pool_check_caps (GstDRMBufferPool * self,
     GstCaps * caps)
 {
-  return gst_caps_is_equal (self->caps, caps);
+  return gst_caps_is_strictly_equal (self->caps, caps);
 }
 
 /** destroy existing bufferpool */
