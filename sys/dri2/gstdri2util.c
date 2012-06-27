@@ -463,7 +463,7 @@ gst_dri2window_check_caps (GstDRI2Window * xwindow, GstCaps * caps)
 {
   g_mutex_lock (xwindow->pool_lock);
   if (xwindow->buffer_pool) {
-    if (gst_drm_buffer_pool_check_caps (xwindow->buffer_pool, caps)) {
+    if (!gst_drm_buffer_pool_check_caps (xwindow->buffer_pool, caps)) {
       GST_INFO_OBJECT (xwindow->dcontext->elem, "caps change");
       gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
       xwindow->buffer_pool = NULL;
