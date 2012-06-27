@@ -1589,14 +1589,15 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
 
   /* initialize the buffer pool if not initialized yet */
   if (G_UNLIKELY (!pvrvideosink->buffer_pool ||
-          gst_drm_buffer_pool_size (pvrvideosink->buffer_pool) != size)) {
+          !gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps))) {
     if (pvrvideosink->buffer_pool) {
       GST_INFO_OBJECT (pvrvideosink, "in buffer alloc, pool->size != size");
       gst_drm_buffer_pool_destroy (pvrvideosink->buffer_pool);
     }
 
-    GST_LOG_OBJECT (pvrvideosink, "Creating a buffer pool with %d buffers",
-        pvrvideosink->num_buffers);
+    GST_LOG_OBJECT (pvrvideosink,
+        "Creating a buffer pool with %d buffers and caps %" GST_PTR_FORMAT,
+        pvrvideosink->num_buffers, caps);
     if (!(pvrvideosink->buffer_pool =
             gst_drm_buffer_pool_new (GST_ELEMENT (pvrvideosink),
                 pvrvideosink->drm_fd, caps, size))) {
