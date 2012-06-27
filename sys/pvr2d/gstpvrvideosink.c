@@ -1178,7 +1178,7 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   pvrvideosink = GST_PVRVIDEOSINK (bsink);
 
   GST_DEBUG_OBJECT (pvrvideosink,
-      "sinkconnect possible caps with given caps %", caps);
+      "sinkconnect possible caps with given caps %" GST_PTR_FORMAT, caps);
 
   if (pvrvideosink->current_caps) {
     GST_DEBUG_OBJECT (pvrvideosink, "already have caps set");
