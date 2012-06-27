@@ -1239,7 +1239,7 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   g_mutex_lock (pvrvideosink->pool_lock);
   if (pvrvideosink->buffer_pool) {
-    if (gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps)) {
+    if (!gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps)) {
       GST_INFO_OBJECT (pvrvideosink, "in set caps, pool->caps != caps");
       gst_drm_buffer_pool_destroy (pvrvideosink->buffer_pool);
       pvrvideosink->buffer_pool = NULL;
