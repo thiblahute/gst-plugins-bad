@@ -33,6 +33,9 @@
 
 #include "gstdrmbufferpool.h"
 
+GST_DEBUG_CATEGORY (drmbufferpool_debug);
+#define GST_CAT_DEFAULT drmbufferpool_debug
+
 static GstDRMBuffer * gst_drm_buffer_new (GstDRMBufferPool * pool);
 static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
     GstDRMBufferPool * pool);
@@ -66,6 +69,8 @@ gst_drm_buffer_pool_new (GstElement * element,
 {
   GstDRMBufferPool *self = (GstDRMBufferPool *)
       gst_mini_object_new (GST_TYPE_DRM_BUFFER_POOL);
+
+  GST_DEBUG_OBJECT (element, "Creating DRM buffer pool with caps %" GST_PTR_FORMAT, caps);
 
   gst_drm_buffer_pool_initialize (self, element, fd, caps, size);
 
@@ -209,6 +214,7 @@ gst_drm_buffer_pool_put (GstDRMBufferPool * self, GstDRMBuffer * buf)
 static void
 gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
 {
+  GST_DEBUG_OBJECT (self->element, "finalize");
   g_mutex_free (self->lock);
   if (self->caps)
     gst_caps_unref (self->caps);
@@ -221,7 +227,12 @@ gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
 static void
 gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
 {
-  GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (klass);
+  GstMiniObjectClass *mini_object_class;
+
+  GST_DEBUG_CATEGORY_INIT (drmbufferpool_debug, "drmbufferpool", 0,
+      "DRM buffer pool");
+
+  mini_object_class = GST_MINI_OBJECT_CLASS (klass);
   klass->buffer_alloc =
       GST_DEBUG_FUNCPTR (gst_drm_buffer_new);
   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
