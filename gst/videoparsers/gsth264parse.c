@@ -168,6 +168,8 @@ gst_h264_parse_finalize (GObject * object)
   GstH264Parse *h264parse = GST_H264_PARSE (object);
 
   g_object_unref (h264parse->frame_out);
+  g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
+  g_list_free (h264parse->pending_buffers);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -224,6 +226,10 @@ gst_h264_parse_reset (GstH264Parse * h264parse)
 
   h264parse->pending_key_unit_ts = GST_CLOCK_TIME_NONE;
   h264parse->force_key_unit_event = NULL;
+
+  g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
+  g_list_free (h264parse->pending_buffers);
+  h264parse->pending_buffers = NULL;
 
   gst_h264_parse_reset_frame (h264parse);
 }
@@ -1553,6 +1559,27 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
 
   gst_h264_parse_reset_frame (h264parse);
 
+  /* we only start pushing when we found the frame size */
+  if (h264parse->width == 0) {
+    GST_DEBUG_OBJECT (h264parse,
+        "Video resolution not known yet, not pushing buffer yet");
+    h264parse->pending_buffers =
+        g_list_append (h264parse->pending_buffers, gst_buffer_ref (buffer));
+    return GST_BASE_PARSE_FLOW_DROPPED;
+  } else if (h264parse->pending_buffers) {
+    GST_DEBUG_OBJECT (h264parse,
+        "We have some pending buffers, pushing them first");
+    while (h264parse->pending_buffers) {
+      GstBuffer *buf = h264parse->pending_buffers->data;
+      gst_buffer_set_caps (buf,
+          GST_PAD_CAPS (GST_BASE_PARSE_SRC_PAD (h264parse)));
+      gst_pad_push (GST_BASE_PARSE_SRC_PAD (h264parse), buf);
+      h264parse->pending_buffers =
+          g_list_delete_link (h264parse->pending_buffers,
+          h264parse->pending_buffers);
+    }
+  }
+
   return GST_FLOW_OK;
 }
 
@@ -1686,7 +1713,12 @@ gst_h264_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
   }
 
   if (format == h264parse->format && align == h264parse->align) {
-    gst_base_parse_set_passthrough (parse, TRUE);
+    /* Only use passthrough when the resolution is known, othwerwise
+       we want to wait and accumulate buffers to only push them
+       once we can set resolution in caps */
+    if (h264parse->width != 0) {
+      gst_base_parse_set_passthrough (parse, TRUE);
+    }
 
     /* we did parse codec-data and might supplement src caps */
     gst_h264_parse_update_src_caps (h264parse, caps);
