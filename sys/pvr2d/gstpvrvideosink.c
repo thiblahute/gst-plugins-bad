@@ -1115,6 +1115,15 @@ gst_pvrvideosink_xwindow_draw_borders (GstPVRVideoSink * pvrvideosink,
 
 /* Element stuff */
 
+static void
+gst_pvrvideosink_resize_window (GstPVRVideoSink * pvrvideosink, gint width,
+    gint height)
+{
+  XResizeWindow (pvrvideosink->dcontext->x_display,
+      pvrvideosink->xwindow->window, width, height);
+  gst_pvrvideosink_xwindow_update_geometry (pvrvideosink);
+}
+
 static gboolean
 gst_pvrvideosink_configure_overlay (GstPVRVideoSink * pvrvideosink, gint width,
     gint height, gint video_par_n, gint video_par_d, gint display_par_n,
@@ -1122,6 +1131,8 @@ gst_pvrvideosink_configure_overlay (GstPVRVideoSink * pvrvideosink, gint width,
 {
   guint calculated_par_n;
   guint calculated_par_d;
+  gint old_sink_width = GST_VIDEO_SINK_WIDTH (pvrvideosink);
+  gint old_sink_height = GST_VIDEO_SINK_HEIGHT (pvrvideosink);
 
   if (!gst_video_calculate_display_ratio (&calculated_par_n, &calculated_par_d,
           width, height, video_par_n, video_par_d, display_par_n,
@@ -1160,6 +1171,19 @@ gst_pvrvideosink_configure_overlay (GstPVRVideoSink * pvrvideosink, gint width,
   GST_DEBUG_OBJECT (pvrvideosink, "scaling to %dx%d",
       GST_VIDEO_SINK_WIDTH (pvrvideosink),
       GST_VIDEO_SINK_HEIGHT (pvrvideosink));
+
+  if (old_sink_width != GST_VIDEO_SINK_WIDTH (pvrvideosink)
+      || old_sink_height != GST_VIDEO_SINK_HEIGHT (pvrvideosink)) {
+    g_mutex_lock (pvrvideosink->flow_lock);
+    if (pvrvideosink->xwindow) {
+      GST_DEBUG_OBJECT (pvrvideosink,
+          "Resizing window to match new overlay size");
+      gst_pvrvideosink_resize_window (pvrvideosink,
+          GST_VIDEO_SINK_WIDTH (pvrvideosink),
+          GST_VIDEO_SINK_HEIGHT (pvrvideosink));
+    }
+    g_mutex_unlock (pvrvideosink->flow_lock);
+  }
 
   return TRUE;
 }
