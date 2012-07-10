@@ -112,6 +112,8 @@ struct _GstH264Parse
   gboolean split_packetized;
   guint interval;
 
+  gboolean is_interlaced;
+
   GstClockTime pending_key_unit_ts;
   GstEvent *force_key_unit_event;
 

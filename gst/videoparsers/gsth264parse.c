@@ -227,6 +227,8 @@ gst_h264_parse_reset (GstH264Parse * h264parse)
   h264parse->pending_key_unit_ts = GST_CLOCK_TIME_NONE;
   h264parse->force_key_unit_event = NULL;
 
+  h264parse->is_interlaced = FALSE;
+
   g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
   g_list_free (h264parse->pending_buffers);
   h264parse->pending_buffers = NULL;
@@ -797,7 +799,9 @@ gst_h264_parse_check_valid_frame (GstBaseParse * parse,
     gst_h264_parse_process_nal (h264parse, &nalu);
 
     /* simulate no next nal if none needed */
-    drain = drain || (h264parse->align == GST_H264_PARSE_ALIGN_NAL);
+    drain = drain || (h264parse->align == GST_H264_PARSE_ALIGN_NAL) ||
+        (h264parse->align == GST_H264_PARSE_ALIGN_AU
+        && h264parse->is_interlaced);
 
     /* In packetized mode we know there's only on NALU in each input packet,
      * but we may not have seen the whole AU already, possibly need more */
@@ -1106,6 +1110,10 @@ gst_h264_parse_update_src_caps (GstH264Parse * h264parse, GstCaps * caps)
         modified = TRUE;
       }
     }
+
+    h264parse->is_interlaced = (sps->frame_mbs_only_flag == 0);
+    GST_DEBUG_OBJECT (h264parse, "SPS signals interlacing %s",
+        h264parse->is_interlaced ? "on" : "off");
 
     if (G_UNLIKELY (modified)) {
       caps = gst_caps_copy (sink_caps);
