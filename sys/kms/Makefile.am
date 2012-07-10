@@ -18,7 +18,7 @@ libgstkmssink_la_LIBADD = \
 	$(GST_LIBS) \
 	$(DRM_LIBS) \
 	-lgstvideo-$(GST_MAJORMINOR) \
-	-lgstbasevideo-$(GST_MAJORMINOR) \
+	$(top_builddir)/gst-libs/gst/video/libgstbasevideo-$(GST_MAJORMINOR).la
 	-lgstdmabuf-$(GST_MAJORMINOR) \
 	$(top_builddir)/gst-libs/gst/drm/libgstdrm-$(GST_MAJORMINOR).la
 
