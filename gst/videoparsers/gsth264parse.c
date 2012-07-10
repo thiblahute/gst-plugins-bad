@@ -699,13 +699,11 @@ gst_h264_parse_check_valid_frame (GstBaseParse * parse,
   while (TRUE) {
     GstH264ParserResult pres;
 
-#if 0
     if (h264parse->packetized_chunked)
       pres =
           gst_h264_parser_identify_nalu_unchecked (nalparser, data, current_off,
           size, &nalu);
     else
-#endif
       pres =
           gst_h264_parser_identify_nalu (nalparser, data, current_off, size,
           &nalu);
@@ -733,11 +731,9 @@ gst_h264_parse_check_valid_frame (GstBaseParse * parse,
             goto more;
           }
         } else if (h264parse->packetized_chunked) {
-#if 0
           /* normal next nal based collection not possible,
            * _chain will have to tell us whether this was last one for AU */
           drain = h264parse->packetized_last;
-#endif
         }
         break;
       case GST_H264_PARSER_BROKEN_LINK:
@@ -808,11 +804,9 @@ gst_h264_parse_check_valid_frame (GstBaseParse * parse,
     if (h264parse->packetized_chunked) {
       if (drain)
         break;
-#if 0
       /* next NALU expected at end of current data */
       current_off = size;
       goto more;
-#endif
     }
 
     /* if no next nal, we know it's complete here */
