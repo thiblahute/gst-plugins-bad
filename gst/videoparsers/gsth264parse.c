@@ -1566,7 +1566,8 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
     GST_DEBUG_OBJECT (h264parse,
         "Video resolution not known yet, not pushing buffer yet");
     h264parse->pending_buffers =
-        g_list_append (h264parse->pending_buffers, gst_buffer_ref (buffer));
+        g_list_append (h264parse->pending_buffers,
+        gst_buffer_ref (frame->buffer));
     return GST_BASE_PARSE_FLOW_DROPPED;
   } else if (h264parse->pending_buffers) {
     GST_DEBUG_OBJECT (h264parse,
