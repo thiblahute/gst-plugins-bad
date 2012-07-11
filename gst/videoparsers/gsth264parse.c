@@ -228,6 +228,7 @@ gst_h264_parse_reset (GstH264Parse * h264parse)
   h264parse->force_key_unit_event = NULL;
 
   h264parse->is_interlaced = FALSE;
+  h264parse->can_do_passthrough = FALSE;
 
   g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
   g_list_free (h264parse->pending_buffers);
@@ -1572,6 +1573,9 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
   } else if (h264parse->pending_buffers) {
     GST_DEBUG_OBJECT (h264parse,
         "We have some pending buffers, pushing them first");
+    if (h264parse->can_do_passthrough) {
+      gst_base_parse_set_passthrough (parse, TRUE);
+    }
     while (h264parse->pending_buffers) {
       GstBuffer *buf = h264parse->pending_buffers->data;
       gst_buffer_set_caps (buf,
@@ -1718,9 +1722,12 @@ gst_h264_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
   if (format == h264parse->format && align == h264parse->align) {
     /* Only use passthrough when the resolution is known, othwerwise
        we want to wait and accumulate buffers to only push them
-       once we can set resolution in caps */
+       once we can set resolution in caps. We'll set passthrough
+       mode once we've found the resolution. */
     if (h264parse->width != 0) {
       gst_base_parse_set_passthrough (parse, TRUE);
+    } else {
+      h264parse->can_do_passthrough = TRUE;
     }
 
     /* we did parse codec-data and might supplement src caps */
