@@ -10,7 +10,8 @@ libgstdri2_la_CFLAGS = $(GST_PLUGINS_BAD_CFLAGS) $(GST_PLUGINS_BASE_CFLAGS) $(GS
 
 libgstdri2_la_LIBADD = $(GST_LIBS) $(GST_BASE_LIBS) \
 	$(GST_PLUGINS_BASE_LIBS) $(GST_PLUGINS_BAD_LIBS) $(X11_LIBS) -lgstvideo-$(GST_MAJORMINOR) \
-	-lgstinterfaces-$(GST_MAJORMINOR) -lgstdmabuf-$(GST_MAJORMINOR) -lgstdrm-$(GST_MAJORMINOR) \
+	-lgstinterfaces-$(GST_MAJORMINOR) -lgstdmabuf-$(GST_MAJORMINOR) \
+	$(top_builddir)/gst-libs/gst/drm/libgstdrm-$(GST_MAJORMINOR).la \
 	$(DRI2_LIBS) \
 	$(LIBM)
 
