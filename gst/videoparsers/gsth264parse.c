@@ -211,6 +211,7 @@ gst_h264_parse_reset (GstH264Parse * h264parse)
   gst_buffer_replace (&h264parse->codec_data, NULL);
   h264parse->nal_length_size = 4;
   h264parse->packetized = FALSE;
+  h264parse->num_ref_frames = -1;
 
   h264parse->align = GST_H264_PARSE_ALIGN_NONE;
   h264parse->format = GST_H264_PARSE_FORMAT_NONE;
@@ -1067,6 +1068,13 @@ gst_h264_parse_update_src_caps (GstH264Parse * h264parse, GstCaps * caps)
   if (G_UNLIKELY (!sps)) {
     caps = gst_caps_copy (sink_caps);
   } else {
+    if (G_UNLIKELY (h264parse->num_ref_frames != sps->num_ref_frames)) {
+      GST_INFO_OBJECT (h264parse, "num_ref_frames changed %d",
+          sps->num_ref_frames);
+      h264parse->num_ref_frames = sps->num_ref_frames;
+      modified = TRUE;
+    }
+
     if (G_UNLIKELY (h264parse->width != sps->width ||
             h264parse->height != sps->height)) {
       GST_INFO_OBJECT (h264parse, "resolution changed %dx%d",
@@ -1125,6 +1133,9 @@ gst_h264_parse_update_src_caps (GstH264Parse * h264parse, GstCaps * caps)
       if (h264parse->fps_num > 0 && h264parse->fps_den > 0)
         gst_caps_set_simple (caps, "framerate",
             GST_TYPE_FRACTION, h264parse->fps_num, h264parse->fps_den, NULL);
+      if (h264parse->num_ref_frames >= 0)
+        gst_caps_set_simple (caps, "num-ref-frames",
+            G_TYPE_INT, h264parse->num_ref_frames, NULL);
     }
   }
 

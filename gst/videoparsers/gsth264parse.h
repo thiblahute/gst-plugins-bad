@@ -64,6 +64,7 @@ struct _GstH264Parse
   GstBuffer *codec_data;
   guint nal_length_size;
   gboolean packetized;
+  gint num_ref_frames;
 
   /* state */
   GstH264NalParser *nalparser;
