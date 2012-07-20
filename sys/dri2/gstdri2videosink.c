@@ -986,8 +986,6 @@ gst_dri2videosink_reset (GstDRI2VideoSink * self)
   g_free (self->display_par);
   self->display_par = NULL;
   GST_OBJECT_LOCK (self);
-  if (self->dcontext)
-    gst_dri2context_delete (self->dcontext);
   self->dcontext = NULL;
   GST_OBJECT_UNLOCK (self);
 }
