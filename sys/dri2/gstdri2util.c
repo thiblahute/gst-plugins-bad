@@ -433,6 +433,8 @@ gst_dri2window_finalize (GstDRI2Window * xwindow)
 
   g_mutex_unlock (dcontext->x_lock);
 
+  gst_dri2context_delete (dcontext);
+
   GST_MINI_OBJECT_CLASS (dri2window_parent_class)->finalize (GST_MINI_OBJECT
       (xwindow));
 }
