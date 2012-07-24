@@ -682,7 +682,7 @@ static gboolean
 plugin_init (GstPlugin * plugin)
 {
   if (!gst_element_register (plugin, "kmssink",
-          GST_RANK_SECONDARY, GST_TYPE_KMS_SINK))
+          GST_RANK_PRIMARY + 1, GST_TYPE_KMS_SINK))
     return FALSE;
 
   GST_DEBUG_CATEGORY_INIT (gst_debug_kms_sink, "kmssink", 0, "kmssink element");
