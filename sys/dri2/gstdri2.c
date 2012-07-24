@@ -34,10 +34,9 @@ GST_DEBUG_CATEGORY (gst_debug_dri2);
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  GST_DEBUG_CATEGORY_INIT (gst_debug_dri2, "dri2videosink", 0,
-      "dri2videosink");
+  GST_DEBUG_CATEGORY_INIT (gst_debug_dri2, "dri2videosink", 0, "dri2videosink");
 
-  return gst_element_register (plugin, "dri2videosink", GST_RANK_SECONDARY,
+  return gst_element_register (plugin, "dri2videosink", GST_RANK_PRIMARY + 2,
       GST_TYPE_DRI2VIDEOSINK);
 }
 
