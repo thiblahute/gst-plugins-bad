@@ -460,6 +460,20 @@ gst_dri2window_set_pool_valid (GstDRI2Window * xwindow, gboolean valid)
   g_mutex_unlock (xwindow->pool_lock);
 }
 
+static void
+gst_dri2window_setup_format (GstDRI2Window * xwindow, GstCaps * caps)
+{
+  GstStructure *structure;
+  guint32 formatid;
+
+  structure = gst_caps_get_structure (caps, 0);
+  if (gst_structure_get_fourcc (structure, "format", &formatid)) {
+    xwindow->format = gst_video_format_from_fourcc (formatid);
+  } else {
+    xwindow->format = GST_VIDEO_FORMAT_UNKNOWN;
+  }
+}
+
 void
 gst_dri2window_check_caps (GstDRI2Window * xwindow, GstCaps * caps)
 {
@@ -472,6 +486,8 @@ gst_dri2window_check_caps (GstDRI2Window * xwindow, GstCaps * caps)
     }
   }
   g_mutex_unlock (xwindow->pool_lock);
+
+  gst_dri2window_setup_format (xwindow, caps);
 }
 
 static inline gboolean
@@ -526,23 +542,61 @@ gst_dri2window_buffer_show (GstDRI2Window * xwindow, GstBuffer * buf)
   return GST_FLOW_OK;
 }
 
+static guint
+gst_dri2window_get_compatible_stride (GstVideoFormat format, guint width)
+{
+  guint quant = 32 / gst_video_format_get_pixel_stride (format, 0);
+  return (width + quant - 1) & ~(quant - 1);
+}
+
 GstBuffer *
 gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
 {
   GstBuffer *newbuf = NULL;
 
   if (! ok_buffer (xwindow, buf)) {
+    guint size, new_width;
 
-    gst_dri2window_buffer_alloc (xwindow, GST_BUFFER_SIZE (buf),
+    /* DRI2 on OMAP has a 32 quantization step for strides, so we copy
+       the buffer into another buffer with a size that's to its liking */
+    new_width = gst_dri2window_get_compatible_stride (xwindow->format,
+        xwindow->width);
+    size = gst_video_format_get_size (xwindow->format, new_width, xwindow->height);
+    gst_dri2window_buffer_alloc (xwindow, size,
         GST_BUFFER_CAPS (buf), &newbuf);
 
     if (newbuf) {
       GST_DEBUG_OBJECT (xwindow->dcontext->elem,
           "slow-path.. I got a %s so I need to memcpy",
           g_type_name (G_OBJECT_TYPE (buf)));
-      memcpy (GST_BUFFER_DATA (newbuf),
-          GST_BUFFER_DATA (buf),
-          MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
+      if (size == GST_BUFFER_SIZE (buf)) {
+        memcpy (GST_BUFFER_DATA (newbuf),
+            GST_BUFFER_DATA (buf),
+            MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
+      } else {
+        GstVideoFormat format = xwindow->format;
+        guint plane, row, ww = xwindow->width, wh = xwindow->height;
+        for (plane = 0; plane < 3; plane++) {
+          int in_base = gst_video_format_get_component_offset (format, plane,
+              ww, wh);
+          int out_base = gst_video_format_get_component_offset (format, plane,
+              new_width, wh);
+          int in_stride = gst_video_format_get_row_stride (format, plane, ww);
+          int out_stride = gst_video_format_get_row_stride (format, plane,
+              new_width);
+          int bytes = gst_video_format_get_component_width (format, plane, ww);
+          int cheight = gst_video_format_get_component_height (format, plane,
+              wh);
+          if (in_stride == 0) {
+            break;
+          }
+          for (row = 0; row < cheight; row++) {
+            void *in = GST_BUFFER_DATA (buf) + in_base + in_stride * row;
+            void *out = GST_BUFFER_DATA (newbuf) + out_base + out_stride * row;
+            memcpy (out, in, bytes);
+          }
+        }
+      }
     }
   }
 
@@ -557,6 +611,21 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
   GstFlowReturn ret = GST_FLOW_ERROR;
 
   *buf = NULL;
+
+  /* If we'll have to memcpy to match stride, just give away
+     a normal buffer */
+  if (xwindow->format != GST_VIDEO_FORMAT_NV12) {
+    guint dri2_good_width =
+        gst_dri2window_get_compatible_stride (xwindow->format, xwindow->width);
+    guint dri2_good_size = gst_video_format_get_size (xwindow->format,
+        dri2_good_width, xwindow->height);
+    if (dri2_good_size != size) {
+      GstBuffer *buffer = gst_buffer_new_and_alloc (size);
+      gst_buffer_set_caps (buffer, caps);
+      *buf = buffer;
+      return GST_FLOW_OK;
+    }
+  }
 
   g_mutex_lock (xwindow->pool_lock);
 #if 0
