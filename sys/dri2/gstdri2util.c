@@ -472,6 +472,9 @@ gst_dri2window_setup_format (GstDRI2Window * xwindow, GstCaps * caps)
   } else {
     xwindow->format = GST_VIDEO_FORMAT_UNKNOWN;
   }
+  if (!gst_structure_get_int (structure, "width", &xwindow->video_width)) {
+    xwindow->video_width = xwindow->width;
+  }
 }
 
 void
@@ -555,12 +558,12 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
   GstBuffer *newbuf = NULL;
 
   if (! ok_buffer (xwindow, buf)) {
-    guint size, new_width;
+    guint size, new_width, width;
 
     /* DRI2 on OMAP has a 32 quantization step for strides, so we copy
        the buffer into another buffer with a size that's to its liking */
-    new_width = gst_dri2window_get_compatible_stride (xwindow->format,
-        xwindow->width);
+    width = xwindow->video_width;
+    new_width = gst_dri2window_get_compatible_stride (xwindow->format, width);
     size = gst_video_format_get_size (xwindow->format, new_width, xwindow->height);
     gst_dri2window_buffer_alloc (xwindow, size,
         GST_BUFFER_CAPS (buf), &newbuf);
@@ -575,7 +578,8 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
             MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
       } else {
         GstVideoFormat format = xwindow->format;
-        guint plane, row, ww = xwindow->width, wh = xwindow->height;
+        guint plane, row, ww = width, wh = xwindow->height;
+        guint next_base = 0;
         for (plane = 0; plane < 3; plane++) {
           int in_base = gst_video_format_get_component_offset (format, plane,
               ww, wh);
@@ -591,11 +595,14 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
           if (in_stride == 0) {
             break;
           }
-          for (row = 0; row < cheight; row++) {
-            void *in = GST_BUFFER_DATA (buf) + in_base + in_stride * row;
-            void *out = GST_BUFFER_DATA (newbuf) + out_base + out_stride * row;
-            memcpy (out, in, bytes);
+          if (in_base >= next_base) {
+            for (row = 0; row < cheight; row++) {
+              void *in = GST_BUFFER_DATA (buf) + in_base + in_stride * row;
+              void *out = GST_BUFFER_DATA (newbuf) + out_base + out_stride * row;
+              memcpy (out, in, bytes);
+            }
           }
+          next_base = in_base + in_stride * cheight;
         }
       }
     }
@@ -610,22 +617,24 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
 {
   GstDRI2Context *dcontext = xwindow->dcontext;
   GstFlowReturn ret = GST_FLOW_ERROR;
+  guint width, dri2_good_width, dri2_good_size;
 
   *buf = NULL;
 
   /* If we'll have to memcpy to match stride, just give away
      a normal buffer */
-  if (xwindow->format != GST_VIDEO_FORMAT_NV12) {
-    guint dri2_good_width =
-        gst_dri2window_get_compatible_stride (xwindow->format, xwindow->width);
-    guint dri2_good_size = gst_video_format_get_size (xwindow->format,
-        dri2_good_width, xwindow->height);
-    if (dri2_good_size != size) {
-      GstBuffer *buffer = gst_buffer_new_and_alloc (size);
-      gst_buffer_set_caps (buffer, caps);
-      *buf = buffer;
-      return GST_FLOW_OK;
-    }
+  width = xwindow->video_width;
+  dri2_good_width =
+      gst_dri2window_get_compatible_stride (xwindow->format, width);
+  dri2_good_size = gst_video_format_get_size (xwindow->format,
+      dri2_good_width, xwindow->height);
+  if (dri2_good_size != size) {
+    GstBuffer *buffer = gst_buffer_new_and_alloc (size);
+    gst_buffer_set_caps (buffer, caps);
+    *buf = buffer;
+    GST_WARNING_OBJECT (dcontext->elem,
+        "Creating normal buffer, will memcpy");
+    return GST_FLOW_OK;
   }
 
   g_mutex_lock (xwindow->pool_lock);
