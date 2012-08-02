@@ -103,6 +103,7 @@ struct _GstDRI2Window
   gboolean internal;
   GC gc;
   GstVideoFormat format;
+  int video_width;
 
   /* The bufferpool is associated to the drawable because the
    * attachment points are associated with the drawable.. if
