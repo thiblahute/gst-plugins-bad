@@ -584,7 +584,8 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
           int in_stride = gst_video_format_get_row_stride (format, plane, ww);
           int out_stride = gst_video_format_get_row_stride (format, plane,
               new_width);
-          int bytes = gst_video_format_get_component_width (format, plane, ww);
+          int bytes = gst_video_format_get_component_width (format, plane, ww)
+              * gst_video_format_get_pixel_stride (format, plane);
           int cheight = gst_video_format_get_component_height (format, plane,
               wh);
           if (in_stride == 0) {
