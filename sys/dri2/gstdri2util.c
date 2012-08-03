@@ -475,6 +475,9 @@ gst_dri2window_setup_format (GstDRI2Window * xwindow, GstCaps * caps)
   if (!gst_structure_get_int (structure, "width", &xwindow->video_width)) {
     xwindow->video_width = xwindow->width;
   }
+  if (!gst_structure_get_int (structure, "height", &xwindow->video_height)) {
+    xwindow->video_height = xwindow->height;
+  }
   if (!gst_structure_get_boolean (structure, "interlaced",
       &xwindow->interlaced)) {
     xwindow->interlaced = FALSE;
@@ -562,13 +565,14 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
   GstBuffer *newbuf = NULL;
 
   if (! ok_buffer (xwindow, buf)) {
-    guint size, new_width, width;
+    guint size, new_width, width, height;
 
     /* DRI2 on OMAP has a 32 quantization step for strides, so we copy
        the buffer into another buffer with a size that's to its liking */
     width = xwindow->video_width;
+    height = xwindow->video_height;
     new_width = gst_dri2window_get_compatible_stride (xwindow->format, width);
-    size = gst_video_format_get_size (xwindow->format, new_width, xwindow->height);
+    size = gst_video_format_get_size (xwindow->format, new_width, height);
     gst_dri2window_buffer_alloc (xwindow, size,
         GST_BUFFER_CAPS (buf), &newbuf);
 
@@ -582,7 +586,7 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
             MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
       } else {
         GstVideoFormat format = xwindow->format;
-        guint plane, row, ww = width, wh = xwindow->height;
+        guint plane, row, ww = width, wh = height;
         guint next_base = 0;
         guint pass, npasses;
         guint in_interlaced_offset, out_interlaced_offset;
@@ -653,7 +657,7 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
   dri2_good_width =
       gst_dri2window_get_compatible_stride (xwindow->format, width);
   dri2_good_size = gst_video_format_get_size (xwindow->format,
-      dri2_good_width, xwindow->height);
+      dri2_good_width, xwindow->video_height);
   if (dri2_good_size != size) {
     GstBuffer *buffer = gst_buffer_new_and_alloc (size);
     gst_buffer_set_caps (buffer, caps);
