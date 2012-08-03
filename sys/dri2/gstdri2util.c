@@ -548,7 +548,7 @@ gst_dri2window_buffer_show (GstDRI2Window * xwindow, GstBuffer * buf)
 static guint
 gst_dri2window_get_compatible_stride (GstVideoFormat format, guint width)
 {
-  guint quant = 32 / gst_video_format_get_pixel_stride (format, 0);
+  guint quant = 32;
   return (width + quant - 1) & ~(quant - 1);
 }
 
