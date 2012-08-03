@@ -475,6 +475,10 @@ gst_dri2window_setup_format (GstDRI2Window * xwindow, GstCaps * caps)
   if (!gst_structure_get_int (structure, "width", &xwindow->video_width)) {
     xwindow->video_width = xwindow->width;
   }
+  if (!gst_structure_get_boolean (structure, "interlaced",
+      &xwindow->interlaced)) {
+    xwindow->interlaced = FALSE;
+  }
 }
 
 void
@@ -580,6 +584,9 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
         GstVideoFormat format = xwindow->format;
         guint plane, row, ww = width, wh = xwindow->height;
         guint next_base = 0;
+        guint pass, npasses;
+        guint in_interlaced_offset, out_interlaced_offset;
+
         for (plane = 0; plane < 3; plane++) {
           int in_base = gst_video_format_get_component_offset (format, plane,
               ww, wh);
@@ -595,14 +602,33 @@ gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
           if (in_stride == 0) {
             break;
           }
+
+          if (xwindow->interlaced) {
+            out_stride *= 2;
+            cheight /= 2;
+            npasses = 2;
+          } else {
+            npasses = 1;
+          }
+          in_interlaced_offset = 0;
+          out_interlaced_offset = 0;
+
           if (in_base >= next_base) {
-            for (row = 0; row < cheight; row++) {
-              void *in = GST_BUFFER_DATA (buf) + in_base + in_stride * row;
-              void *out = GST_BUFFER_DATA (newbuf) + out_base + out_stride * row;
-              memcpy (out, in, bytes);
+            for (pass = 0; pass < npasses; pass++) {
+              for (row = 0; row < cheight; row++) {
+                void *in = GST_BUFFER_DATA (buf) + in_base +
+                    in_interlaced_offset + in_stride * row;
+                void *out = GST_BUFFER_DATA (newbuf) + out_base +
+                    out_interlaced_offset + out_stride * row;
+                memcpy (out, in, bytes);
+              }
+              if (xwindow->interlaced) {
+                in_interlaced_offset = in_stride * cheight;
+                out_interlaced_offset = out_stride / 2;
+              }
             }
           }
-          next_base = in_base + in_stride * cheight;
+          next_base = in_base + in_stride * cheight * npasses;
         }
       }
     }
