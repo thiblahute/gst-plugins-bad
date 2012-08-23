@@ -254,6 +254,8 @@ void
 gst_drm_buffer_initialize (GstDRMBuffer * self,
     GstDRMBufferPool * pool, struct omap_bo * bo)
 {
+  GstDmaBuf *dmabuf;
+
   self->bo = bo;
 
   GST_BUFFER_DATA (self) = omap_bo_map (self->bo);
@@ -263,8 +265,9 @@ gst_drm_buffer_initialize (GstDRMBuffer * self,
    * plugins can access for zero copy hw accel:
    */
   // XXX buffer doesn't take ownership of the GstDmaBuf...
-  gst_buffer_set_dma_buf (GST_BUFFER (self),
-      gst_dma_buf_new (omap_bo_dmabuf (self->bo)));
+  dmabuf = gst_dma_buf_new (omap_bo_dmabuf (self->bo));
+  gst_buffer_set_dma_buf (GST_BUFFER (self), dmabuf);
+  gst_dma_buf_unref (dmabuf);
 
   gst_drm_buffer_set_pool (self, pool);
 }
