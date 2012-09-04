@@ -603,7 +603,7 @@ gst_dri2videosink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
   GST_LOG_OBJECT (self, "render buffer: %p (%"GST_TIME_FORMAT")",
       buf, GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buf)));
 
-  if (! GST_IS_DRI2_BUFFER (buf)) {
+  if (!GST_IS_DRI2_BUFFER (buf)) {
     /* special case check for sub-buffers:  In certain cases, places like
      * GstBaseTransform, which might check that the buffer is writable
      * before copying metadata, timestamp, and such, will find that the
@@ -612,7 +612,7 @@ gst_dri2videosink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
      * original buffer size.
      *
      * This could happen in two scenarios: (1) a tee in the pipeline, and
-     * (2) because the refcnt is incremented in gst_mini_object_free()
+     * (2) because the refcount is incremented in gst_mini_object_free()
      * before the finalize function is called, and decremented after it
      * returns..  but returning this buffer to the buffer pool in the
      * finalize function, could wake up a thread blocked in _buffer_alloc()
