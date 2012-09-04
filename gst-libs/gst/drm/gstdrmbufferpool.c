@@ -36,7 +36,7 @@
 GST_DEBUG_CATEGORY (drmbufferpool_debug);
 #define GST_CAT_DEFAULT drmbufferpool_debug
 
-static GstDRMBuffer * gst_drm_buffer_new (GstDRMBufferPool * pool);
+static GstDRMBuffer *gst_drm_buffer_new (GstDRMBufferPool * pool);
 static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
     GstDRMBufferPool * pool);
 
@@ -44,16 +44,15 @@ static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
  * GstDRMBufferPool:
  */
 
-G_DEFINE_TYPE (GstDRMBufferPool, gst_drm_buffer_pool,
-    GST_TYPE_MINI_OBJECT);
+G_DEFINE_TYPE (GstDRMBufferPool, gst_drm_buffer_pool, GST_TYPE_MINI_OBJECT);
 
 void
 gst_drm_buffer_pool_initialize (GstDRMBufferPool * self,
     GstElement * element, int fd, GstCaps * caps, guint size)
 {
   self->element = gst_object_ref (element);
-  self->fd   = fd;
-  self->dev  = omap_device_new (fd);
+  self->fd = fd;
+  self->dev = omap_device_new (fd);
   self->caps = NULL;
   gst_drm_buffer_pool_set_caps (self, caps);
   self->size = size;
@@ -70,7 +69,8 @@ gst_drm_buffer_pool_new (GstElement * element,
   GstDRMBufferPool *self = (GstDRMBufferPool *)
       gst_mini_object_new (GST_TYPE_DRM_BUFFER_POOL);
 
-  GST_DEBUG_OBJECT (element, "Creating DRM buffer pool with caps %" GST_PTR_FORMAT, caps);
+  GST_DEBUG_OBJECT (element,
+      "Creating DRM buffer pool with caps %" GST_PTR_FORMAT, caps);
 
   gst_drm_buffer_pool_initialize (self, element, fd, caps, size);
 
@@ -105,8 +105,7 @@ gst_drm_buffer_pool_set_caps (GstDRMBufferPool * self, GstCaps * caps)
 }
 
 gboolean
-gst_drm_buffer_pool_check_caps (GstDRMBufferPool * self,
-    GstCaps * caps)
+gst_drm_buffer_pool_check_caps (GstDRMBufferPool * self, GstCaps * caps)
 {
   return gst_caps_is_strictly_equal (self->caps, caps);
 }
@@ -233,8 +232,7 @@ gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
       "DRM buffer pool");
 
   mini_object_class = GST_MINI_OBJECT_CLASS (klass);
-  klass->buffer_alloc =
-      GST_DEBUG_FUNCPTR (gst_drm_buffer_new);
+  klass->buffer_alloc = GST_DEBUG_FUNCPTR (gst_drm_buffer_new);
   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
       GST_DEBUG_FUNCPTR (gst_drm_buffer_pool_finalize);
 }
@@ -252,7 +250,7 @@ G_DEFINE_TYPE (GstDRMBuffer, gst_drm_buffer, GST_TYPE_BUFFER);
 
 void
 gst_drm_buffer_initialize (GstDRMBuffer * self,
-    GstDRMBufferPool * pool, struct omap_bo * bo)
+    GstDRMBufferPool * pool, struct omap_bo *bo)
 {
   GstDmaBuf *dmabuf;
 
@@ -317,8 +315,8 @@ gst_drm_buffer_finalize (GstDRMBuffer * self)
     return;
 
   if (GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup) {
-    GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup (
-        self->pool, self);
+    GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup (self->pool,
+        self);
   }
 
   GST_BUFFER_DATA (self) = NULL;
