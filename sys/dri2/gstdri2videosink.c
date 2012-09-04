@@ -508,9 +508,9 @@ gst_dri2videosink_change_state (GstElement * element, GstStateChange transition)
 
   self = GST_DRI2VIDEOSINK (element);
 
-  GST_DEBUG_OBJECT (self, "%d -> %d",
-      GST_STATE_TRANSITION_CURRENT (transition),
-      GST_STATE_TRANSITION_NEXT (transition));
+  GST_DEBUG_OBJECT (self, "%s -> %s",
+      gst_element_state_get_name (GST_STATE_TRANSITION_CURRENT (transition)),
+      gst_element_state_get_name (GST_STATE_TRANSITION_NEXT (transition)));
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
