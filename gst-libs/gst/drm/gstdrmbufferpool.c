@@ -119,7 +119,8 @@ gst_drm_buffer_pool_destroy (GstDRMBufferPool * self)
   GST_DRM_BUFFER_POOL_LOCK (self);
   self->running = FALSE;
 
-  GST_DEBUG_OBJECT (self->element, "destroy pool");
+  GST_DEBUG_OBJECT (self->element, "destroy pool (contains: %d buffers)",
+      self->nbbufs);
 
   /* free all buffers on the freelist */
   while (self->head) {
@@ -168,6 +169,16 @@ gst_drm_buffer_pool_get (GstDRMBufferPool * self, gboolean force_alloc)
         self->tail = NULL;
     } else {
       buf = GST_DRM_BUFFER_POOL_GET_CLASS (self)->buffer_alloc (self);
+
+#ifndef GST_DISABLE_GST_DEBUG
+      {
+        /*  We already have the lock and do need it */
+        GST_DEBUG_OBJECT (self, "Creating new buffer (living buffer: %i)",
+            ++self->nbbufs);
+        self->buffs = g_list_prepend (self->buffs, buf);
+      }
+#endif /* DEBUG */
+
     }
     if (self->caps)
       gst_buffer_set_caps (GST_BUFFER (buf), self->caps);
@@ -214,6 +225,25 @@ static void
 gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
 {
   GST_DEBUG_OBJECT (self->element, "finalize");
+
+#ifndef GST_DISABLE_GST_DEBUG
+  {
+    GList *tmp;
+
+    GST_DRM_BUFFER_POOL_LOCK (self);
+    if (self->buffs) {
+      GST_WARNING_OBJECT (self, "%d buffers have not properly been freed:",
+          self->nbbufs);
+
+      for (tmp = self->buffs; tmp; tmp = tmp->next) {
+        GST_DEBUG_OBJECT (tmp->data, "not properly freed");
+      }
+      g_list_free (self->buffs);
+    }
+    GST_DRM_BUFFER_POOL_UNLOCK (self);
+  }
+#endif /* DEBUG */
+
   g_mutex_free (self->lock);
   if (self->caps)
     gst_caps_unref (self->caps);
@@ -240,6 +270,10 @@ gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
 static void
 gst_drm_buffer_pool_init (GstDRMBufferPool * self)
 {
+#ifndef GST_DISABLE_GST_DEBUG
+  self->nbbufs = 0;
+  self->buffs = NULL;
+#endif /* DEBUG */
 }
 
 /*
@@ -313,6 +347,16 @@ gst_drm_buffer_finalize (GstDRMBuffer * self)
   resuscitated = gst_drm_buffer_pool_put (pool, self);
   if (resuscitated)
     return;
+
+#ifndef GST_DISABLE_GST_DEBUG
+  {
+    GST_DRM_BUFFER_POOL_LOCK (pool);
+    GST_DEBUG_OBJECT (pool, "deleting buffer %p, remaining buffers: %i", self,
+        --pool->nbbufs);
+    pool->buffs = g_list_remove (pool->buffs, self);
+    GST_DRM_BUFFER_POOL_UNLOCK (pool);
+  }
+#endif /* DEBUG */
 
   if (GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup) {
     GST_DRM_BUFFER_POOL_GET_CLASS (self->pool)->buffer_cleanup (self->pool,

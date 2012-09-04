@@ -84,6 +84,11 @@ struct _GstDRMBufferPool {
   GstDRMBuffer    *tail;
   guint size;
 
+#ifndef GST_DISABLE_GST_DEBUG
+  guint            nbbufs;
+  GList           *buffs;
+#endif /* DEBUG */
+
   /* TODO add reserved */
 };
 
