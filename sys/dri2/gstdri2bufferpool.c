@@ -64,6 +64,7 @@ gst_dri2_buffer_alloc (GstDRMBufferPool * pool)
 
   gst_mini_object_ref (GST_MINI_OBJECT (pool));
 
+  GST_DEBUG_OBJECT (pool, "Allocating new buffer");
   self->dri2buf = gst_dri2window_get_dri2buffer (dri2pool->xwindow,
       pool->width, pool->height, pool->fourcc);
 

@@ -272,6 +272,8 @@ fail:
 void
 gst_dri2context_delete (GstDRI2Context *dcontext)
 {
+  GST_DEBUG_OBJECT (dcontext, "Deleting context");
+
   if (dcontext->par) {
     g_value_unset (dcontext->par);
     g_free (dcontext->par);
@@ -402,6 +404,8 @@ static void
 gst_dri2window_finalize (GstDRI2Window * xwindow)
 {
   GstDRI2Context *dcontext = xwindow->dcontext;
+
+  GST_DEBUG_OBJECT (xwindow, "Finalize window");
 
   g_mutex_lock (xwindow->pool_lock);
   xwindow->pool_valid = FALSE;
@@ -693,6 +697,8 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
     GST_LOG_OBJECT (dcontext->elem, "Creating buffer pool");
     xwindow->buffer_pool = GST_DRM_BUFFER_POOL (gst_dri2_buffer_pool_new (
         xwindow, dcontext->drm_fd, caps, size));
+    GST_LOG_OBJECT (dcontext->elem, "Created buffer pool %p",
+        xwindow->buffer_pool);
     if (!xwindow->buffer_pool) {
       goto beach;
     }
