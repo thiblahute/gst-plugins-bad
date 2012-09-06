@@ -40,6 +40,14 @@ static GstDRMBuffer *gst_drm_buffer_new (GstDRMBufferPool * pool);
 static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
     GstDRMBufferPool * pool);
 
+enum
+{
+  POOLED_SIGNAL,
+  LAST_SIGNAL
+};
+
+static guint drm_buffer_signals[LAST_SIGNAL] = { 0 };
+
 /*
  * GstDRMBufferPool:
  */
@@ -345,8 +353,10 @@ gst_drm_buffer_finalize (GstDRMBuffer * self)
   GST_LOG_OBJECT (pool->element, "finalizing buffer %p", self);
 
   resuscitated = gst_drm_buffer_pool_put (pool, self);
-  if (resuscitated)
+  if (resuscitated) {
+    g_signal_emit (G_OBJECT (self), drm_buffer_signals[POOLED_SIGNAL], 0);
     return;
+  }
 
 #ifndef GST_DISABLE_GST_DEBUG
   {
@@ -376,6 +386,11 @@ static void
 gst_drm_buffer_class_init (GstDRMBufferClass * klass)
 {
   GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (klass);
+
+  drm_buffer_signals[POOLED_SIGNAL] =
+      g_signal_new ("pooled", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL,
+      NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
       GST_DEBUG_FUNCPTR (gst_drm_buffer_finalize);

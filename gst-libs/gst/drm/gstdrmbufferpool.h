@@ -107,6 +107,11 @@ struct _GstDRMBufferPoolClass {
    */
   void (*buffer_cleanup)(GstDRMBufferPool * pool, GstDRMBuffer *buf);
 
+  /* Called when a buffer is added back to the pool after its last
+   * ref has been removed.
+   */
+  void (*buffer_pooled)(GstDRMBufferPool * pool, GstDRMBuffer *buf);
+
   /* TODO add reserved */
 };
 
