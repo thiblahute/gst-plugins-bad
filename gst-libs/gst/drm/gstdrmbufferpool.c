@@ -188,7 +188,7 @@ gst_drm_buffer_pool_get (GstDRMBufferPool * self, gboolean force_alloc)
 #endif /* DEBUG */
 
     }
-    if (self->caps)
+    if (buf && self->caps)
       gst_buffer_set_caps (GST_BUFFER (buf), self->caps);
   }
   GST_DRM_BUFFER_POOL_UNLOCK (self);
