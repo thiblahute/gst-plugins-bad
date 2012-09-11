@@ -324,6 +324,10 @@ gst_drm_buffer_new (GstDRMBufferPool * pool)
    * drm drivers here:
    */
   struct omap_bo *bo = omap_bo_new (pool->dev, pool->size, OMAP_BO_WC);
+  if (!bo) {
+    GST_WARNING_OBJECT (pool->element, "Failed to create bo");
+    return NULL;
+  }
 
   gst_drm_buffer_initialize (self, pool, bo);
 
