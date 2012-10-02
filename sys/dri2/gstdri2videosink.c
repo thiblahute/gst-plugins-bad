@@ -51,7 +51,7 @@ static GstStaticPadTemplate gst_dri2videosink_sink_template_factory =
     GST_STATIC_CAPS ("video/x-raw-yuv, "
         "format = (fourcc){NV12, I420, YUY2, UYVY}, "
         "width = [1, 2048], "
-        "height = [1, 1080], "
+        "height = [1, 2048], "
         "framerate = " GST_VIDEO_FPS_RANGE));
 
 enum
