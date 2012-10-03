@@ -642,6 +642,14 @@ gst_dri2videosink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
   if (newbuf)
     buf = newbuf;
 
+  /* If there is no crop attached to this buffer, but we received a crop
+     event previously, attach our crop event. This will ensure that software
+     decoders that do not know about the crop API will still properly work
+     with dri2videosink's use of crop. Test crop_rect first as it's faster. */
+  if (self->crop_rect && !gst_buffer_get_video_crop (buf)) {
+    gst_buffer_set_video_crop (buf, self->crop_rect);
+  }
+
   ret = gst_dri2window_buffer_show (xwindow, buf);
 
   if (ret == GST_FLOW_OK) {
@@ -956,6 +964,48 @@ gst_dri2videosink_get_property (GObject * object, guint prop_id,
   }
 }
 
+static gboolean
+gst_dri2videosink_event (GstBaseSink * bsink, GstEvent * event)
+{
+  gboolean res;
+  GstDRI2VideoSink *dri2videosink = GST_DRI2VIDEOSINK (bsink);
+  GstStructure *structure;
+  GstMessage *message;
+
+  switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_CROP:
+    {
+      gint left, top, width, height;
+
+      gst_event_parse_crop (event, &top, &left, &width, &height);
+      GST_DEBUG_OBJECT (bsink, "Got crop event: %d %d %d %d", top, left, width,
+          height);
+      if (width < 0) {
+        width = GST_VIDEO_SINK_WIDTH (dri2videosink) - left;
+      }
+      if (height < 0) {
+        height = GST_VIDEO_SINK_HEIGHT (dri2videosink) - top;
+      }
+
+      if (dri2videosink->crop_rect)
+        gst_video_crop_unref (dri2videosink->crop_rect);
+      dri2videosink->crop_rect = gst_video_crop_new (top, left, width, height);
+
+      structure = gst_structure_new ("video-size-crop", "width", G_TYPE_INT,
+          width, "height", G_TYPE_INT, height, NULL);
+      message = gst_message_new_application (GST_OBJECT (dri2videosink),
+          structure);
+      gst_bus_post (gst_element_get_bus (GST_ELEMENT (dri2videosink)), message);
+
+      break;
+    }
+    default:
+      res = TRUE;
+  }
+
+  return res;
+}
+
 static void
 gst_dri2videosink_reset (GstDRI2VideoSink * self)
 {
@@ -977,6 +1027,11 @@ gst_dri2videosink_reset (GstDRI2VideoSink * self)
   self->render_rect.x = self->render_rect.y = 0;
   self->render_rect.w = self->render_rect.h = 0;
   self->have_render_rect = FALSE;
+
+  if (self->crop_rect) {
+    gst_video_crop_unref (self->crop_rect);
+    self->crop_rect = NULL;
+  }
 
   if (self->xwindow) {
     gst_dri2window_delete (self->xwindow);
@@ -1074,6 +1129,7 @@ gst_dri2videosink_class_init (GstDRI2VideoSinkClass * klass)
   gstbasesink_class->get_times = GST_DEBUG_FUNCPTR (gst_dri2videosink_get_times);
 
   gstbasesink_class->render = GST_DEBUG_FUNCPTR (gst_dri2videosink_show_frame);
+  gstbasesink_class->event = GST_DEBUG_FUNCPTR (gst_dri2videosink_event);
 }
 
 GType

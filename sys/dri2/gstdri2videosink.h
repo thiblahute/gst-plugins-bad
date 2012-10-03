@@ -26,6 +26,7 @@
 #ifndef __GST_DRI2VIDEOSINK_H__
 #define __GST_DRI2VIDEOSINK_H__
 
+#include <gst/video/video-crop.h>
 #include <gst/video/gstvideosink.h>
 
 #include "gstdri2util.h"
@@ -71,6 +72,7 @@ struct _GstDRI2VideoSink
 
   GstVideoRectangle render_rect;
   gboolean have_render_rect;
+  GstVideoCrop *crop_rect;
 
   GValue *display_par;
   gint video_par_n;
