@@ -488,7 +488,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   self->fps_n = gst_value_get_fraction_numerator (fps);
   self->fps_d = gst_value_get_fraction_denominator (fps);
 
-  self->current_caps = gst_caps_ref (caps);
+  gst_caps_replace (&self->current_caps, caps);
 
   return TRUE;
 }
