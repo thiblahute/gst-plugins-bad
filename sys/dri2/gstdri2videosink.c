@@ -81,8 +81,6 @@ gst_dri2videosink_xwindow_update_geometry (GstDRI2VideoSink * self)
     self->render_rect.w = self->xwindow->width;
     self->render_rect.h = self->xwindow->height;
   }
-
-  g_mutex_unlock (self->dcontext->x_lock);
 }
 
 /* This function handles XEvents that might be in the queue. It generates
