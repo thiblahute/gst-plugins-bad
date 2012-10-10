@@ -45,14 +45,13 @@ static void gst_dri2videosink_set_event_handling (GstXOverlay * overlay,
 
 /* TODO we can get supported color formats from xserver */
 static GstStaticPadTemplate gst_dri2videosink_sink_template_factory =
-    GST_STATIC_PAD_TEMPLATE ("sink",
+GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw-yuv, "
         "format = (fourcc){NV12, I420, YUY2, UYVY}, "
         "width = [1, 2048], "
-        "height = [1, 2048], "
-        "framerate = " GST_VIDEO_FPS_RANGE));
+        "height = [1, 2048], " "framerate = " GST_VIDEO_FPS_RANGE));
 
 enum
 {
@@ -308,8 +307,7 @@ gst_dri2videosink_xwindow_set_title (GstDRI2VideoSink * self,
       if (title) {
         if ((XStringListToTextProperty (((char **) &title), 1,
                     &xproperty)) != 0) {
-          XSetWMName (self->dcontext->x_display, xwindow->window,
-              &xproperty);
+          XSetWMName (self->dcontext->x_display, xwindow->window, &xproperty);
           XFree (xproperty.value);
         }
 
@@ -346,8 +344,7 @@ gst_dri2videosink_get_window (GstDRI2VideoSink * self)
 {
   if (!self->xwindow) {
     self->xwindow = gst_dri2videosink_create_window (self,
-        GST_VIDEO_SINK_WIDTH (self),
-        GST_VIDEO_SINK_HEIGHT (self));
+        GST_VIDEO_SINK_WIDTH (self), GST_VIDEO_SINK_HEIGHT (self));
   }
   return self->xwindow;
 }
@@ -397,8 +394,7 @@ gst_dri2videosink_configure_overlay (GstDRI2VideoSink * self, gint width,
     GST_VIDEO_SINK_HEIGHT (self) = height;
   }
   GST_DEBUG_OBJECT (self, "scaling to %dx%d",
-      GST_VIDEO_SINK_WIDTH (self),
-      GST_VIDEO_SINK_HEIGHT (self));
+      GST_VIDEO_SINK_WIDTH (self), GST_VIDEO_SINK_HEIGHT (self));
 
   return TRUE;
 }
@@ -415,8 +411,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   self = GST_DRI2VIDEOSINK (bsink);
 
-  GST_DEBUG_OBJECT (self,
-      "sinkconnect possible caps with given caps %", caps);
+  GST_DEBUG_OBJECT (self, "sinkconnect possible caps with given caps %", caps);
 
   if (self->current_caps) {
     GST_DEBUG_OBJECT (self, "already have caps set");
@@ -432,8 +427,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   ret = gst_video_format_parse_caps_strided (caps, &self->format,
       &width, &height, &self->rowstride);
   if (self->rowstride == 0)
-    self->rowstride =
-        gst_video_format_get_row_stride (self->format, 0, width);
+    self->rowstride = gst_video_format_get_row_stride (self->format, 0, width);
   fps = gst_structure_get_value (structure, "framerate");
   ret &= (fps != NULL);
   if (!ret) {
@@ -446,8 +440,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   /* figure out if we are dealing w/ interlaced */
   self->interlaced = FALSE;
-  gst_structure_get_boolean (structure, "interlaced",
-      &self->interlaced);
+  gst_structure_get_boolean (structure, "interlaced", &self->interlaced);
 
   /* get video's pixel-aspect-ratio */
   caps_par = gst_structure_get_value (structure, "pixel-aspect-ratio");
@@ -461,8 +454,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   /* get display's pixel-aspect-ratio */
   if (self->display_par) {
-    self->display_par_n =
-        gst_value_get_fraction_numerator (self->display_par);
+    self->display_par_n = gst_value_get_fraction_numerator (self->display_par);
     self->display_par_d =
         gst_value_get_fraction_denominator (self->display_par);
   } else {
@@ -486,8 +478,7 @@ gst_dri2videosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
   g_mutex_lock (self->flow_lock);
 
-  gst_dri2window_check_caps (
-      gst_dri2videosink_get_window (self), caps);
+  gst_dri2window_check_caps (gst_dri2videosink_get_window (self), caps);
 
   g_mutex_unlock (self->flow_lock);
 
@@ -534,8 +525,7 @@ gst_dri2videosink_change_state (GstElement * element, GstStateChange transition)
       /* update object's pixel-aspect-ratio with calculated one */
       if (!self->display_par) {
         self->display_par = g_new0 (GValue, 1);
-        gst_value_init_and_copy (self->display_par,
-            self->dcontext->par);
+        gst_value_init_and_copy (self->display_par, self->dcontext->par);
         GST_DEBUG_OBJECT (self, "set calculated PAR on object's PAR");
       }
 
@@ -591,8 +581,7 @@ gst_dri2videosink_get_times (GstBaseSink * bsink, GstBuffer * buf,
     } else {
       if (self->fps_n > 0) {
         *end = *start +
-            gst_util_uint64_scale_int (GST_SECOND, self->fps_d,
-            self->fps_n);
+            gst_util_uint64_scale_int (GST_SECOND, self->fps_d, self->fps_n);
       }
     }
   }
@@ -611,7 +600,7 @@ gst_dri2videosink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
   if (!self->exposed)
     return GST_FLOW_OK;
 
-  GST_LOG_OBJECT (self, "render buffer: %p (%"GST_TIME_FORMAT")",
+  GST_LOG_OBJECT (self, "render buffer: %p (%" GST_TIME_FORMAT ")",
       buf, GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buf)));
 
   if (!GST_IS_DRI2_BUFFER (buf)) {
@@ -763,7 +752,7 @@ gst_dri2videosink_set_window_handle (GstXOverlay * overlay, guintptr id)
 
   /* If the element has not initialized the X11 context try to do so */
   if (!(self->dcontext ||
-      (self->dcontext = gst_dri2context_new (GST_ELEMENT (self))))) {
+          (self->dcontext = gst_dri2context_new (GST_ELEMENT (self))))) {
     g_mutex_unlock (self->flow_lock);
     /* we have thrown a GST_ELEMENT_ERROR now */
     return;
@@ -777,8 +766,7 @@ gst_dri2videosink_set_window_handle (GstXOverlay * overlay, guintptr id)
 
   /* If the xid is 0 we will create an internal one in buffer_alloc */
   if (xwindow_id != 0) {
-    self->xwindow = gst_dri2window_new_from_handle (self->dcontext,
-        xwindow_id);
+    self->xwindow = gst_dri2window_new_from_handle (self->dcontext, xwindow_id);
     gst_dri2videosink_xwindow_update_geometry (self);
   }
 
@@ -793,8 +781,7 @@ gst_dri2videosink_expose (GstXOverlay * overlay)
   GstDRI2VideoSink *self = GST_DRI2VIDEOSINK (overlay);
 
   if (self->display_buf) {
-    gst_dri2videosink_show_frame (
-        GST_BASE_SINK (self), self->display_buf);
+    gst_dri2videosink_show_frame (GST_BASE_SINK (self), self->display_buf);
   }
 }
 
@@ -821,8 +808,7 @@ gst_dri2videosink_set_event_handling (GstXOverlay * overlay,
     event_mask |= ButtonPressMask | ButtonReleaseMask;
   }
 
-  XSelectInput (self->dcontext->x_display,
-      self->xwindow->window, event_mask);
+  XSelectInput (self->dcontext->x_display, self->xwindow->window, event_mask);
 
   g_mutex_unlock (self->dcontext->x_lock);
 
@@ -1101,8 +1087,7 @@ gst_dri2videosink_base_init (gpointer g_class)
 
   gst_element_class_set_details_simple (element_class,
       "DRI2 Video sink", "Sink/Video",
-      "dri2videosink",
-      "Rob Clark <rob@ti.com>");
+      "dri2videosink", "Rob Clark <rob@ti.com>");
 
   gst_element_class_add_pad_template (element_class,
       gst_static_pad_template_get (&gst_dri2videosink_sink_template_factory));
@@ -1137,7 +1122,8 @@ gst_dri2videosink_class_init (GstDRI2VideoSinkClass * klass)
   gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_dri2videosink_getcaps);
   gstbasesink_class->buffer_alloc =
       GST_DEBUG_FUNCPTR (gst_dri2videosink_buffer_alloc);
-  gstbasesink_class->get_times = GST_DEBUG_FUNCPTR (gst_dri2videosink_get_times);
+  gstbasesink_class->get_times =
+      GST_DEBUG_FUNCPTR (gst_dri2videosink_get_times);
 
   gstbasesink_class->render = GST_DEBUG_FUNCPTR (gst_dri2videosink_show_frame);
   gstbasesink_class->event = GST_DEBUG_FUNCPTR (gst_dri2videosink_event);
@@ -1173,8 +1159,7 @@ gst_dri2videosink_get_type (void)
 
     g_type_add_interface_static (self_type,
         GST_TYPE_IMPLEMENTS_INTERFACE, &iface_info);
-    g_type_add_interface_static (self_type, GST_TYPE_X_OVERLAY,
-        &overlay_info);
+    g_type_add_interface_static (self_type, GST_TYPE_X_OVERLAY, &overlay_info);
     g_type_add_interface_static (self_type, GST_TYPE_NAVIGATION,
         &navigation_info);
   }
