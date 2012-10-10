@@ -139,6 +139,14 @@ gst_dri2videosink_handle_xevents (GstDRI2VideoSink * self)
     switch (e.type) {
       case Expose:
         exposed = TRUE;
+        self->exposed = TRUE;
+        break;
+      case MapNotify:
+        exposed = TRUE;
+        self->exposed = TRUE;
+        break;
+      case UnmapNotify:
+        self->exposed = FALSE;
         break;
       case ConfigureNotify:
         g_mutex_lock (self->dcontext->x_lock);
@@ -325,6 +333,8 @@ gst_dri2videosink_create_window (GstDRI2VideoSink * self, gint width,
   gst_dri2videosink_xwindow_set_title (self, xwindow, NULL);
   gst_dri2videosink_xwindow_update_geometry (self);
   g_mutex_unlock (self->dcontext->x_lock);
+
+  self->exposed = TRUE;
 
   GST_DEBUG_OBJECT (self, "end");
 
@@ -597,6 +607,9 @@ gst_dri2videosink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
   GstBuffer *newbuf;
 
   g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
+
+  if (!self->exposed)
+    return GST_FLOW_OK;
 
   GST_LOG_OBJECT (self, "render buffer: %p (%"GST_TIME_FORMAT")",
       buf, GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buf)));

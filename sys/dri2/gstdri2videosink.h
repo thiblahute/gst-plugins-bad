@@ -83,6 +83,8 @@ struct _GstDRI2VideoSink
   gchar *media_title;
   GstBuffer *display_buf;
 
+  gboolean exposed;
+
   /* also keep the last buffer, to give the GPU some time to finish
    * it's blit.. the decoder will block if the buffer isn't done yet
    * for correctness, but really we'd like to minimize that and keep
