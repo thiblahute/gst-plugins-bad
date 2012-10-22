@@ -28,6 +28,7 @@
 #include <ctype.h>
 
 #include <gst/video/video-crop.h>
+#include <gst/interfaces/xoverlay.h>
 
 #include "gstdri2util.h"
 #include "gstdri2bufferpool.h"
@@ -347,6 +348,9 @@ gst_dri2window_new_from_handle (GstDRI2Context * dcontext, XID xwindow_id)
    */
   free (get_buffer (xwindow, DRI2BufferFrontLeft,
           xwindow->width, xwindow->height, 32));
+
+  gst_x_overlay_got_window_handle (GST_X_OVERLAY (dcontext->elem),
+      xwindow->window);
 
   return xwindow;
 }
