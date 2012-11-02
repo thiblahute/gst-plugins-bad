@@ -27,13 +27,18 @@
 
 #include <ctype.h>
 
-#include <gst/video/video-crop.h>
-#include <gst/interfaces/xoverlay.h>
+#include <stdlib.h>
+
+#include <gst/video/videooverlay.h>
+#include <gst/video/gstvideometa.h>
+
+/* Debugging category */
+#include <gst/gstinfo.h>
 
 #include "gstdri2util.h"
 #include "gstdri2bufferpool.h"
 
-static GstMiniObjectClass *dri2window_parent_class = NULL;
+GST_DEBUG_CATEGORY_EXTERN (GST_CAT_PERFORMANCE);
 
 static Bool
 WireToEvent (Display * dpy, XExtDisplayInfo * info,
@@ -167,9 +172,9 @@ gst_dri2context_new (GstElement * elem)
   unsigned int i, nformats, *formats = NULL;
   int fd = -1;
 
-  dcontext = g_new0 (GstDRI2Context, 1);
+  dcontext = g_slice_new0 (GstDRI2Context);
   dcontext->elem = elem;
-  dcontext->x_lock = g_mutex_new ();
+  g_mutex_init (&dcontext->x_lock);
 
   dcontext->x_display = XOpenDisplay (NULL);
   if (!dcontext->x_display) {
@@ -265,7 +270,7 @@ fail:
   if (fd >= 0)
     drmClose (fd);
 
-  g_mutex_free (dcontext->x_lock);
+  g_mutex_clear (&dcontext->x_lock);
   g_free (dcontext);
 
   return NULL;
@@ -281,10 +286,10 @@ gst_dri2context_delete (GstDRI2Context * dcontext)
     g_free (dcontext->par);
   }
 
-  g_mutex_lock (dcontext->x_lock);
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
   XCloseDisplay (dcontext->x_display);
-  g_mutex_unlock (dcontext->x_lock);
-  g_mutex_free (dcontext->x_lock);
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
+  g_mutex_clear (&dcontext->x_lock);
 
   omap_device_del (dcontext->dev);
   drmClose (dcontext->drm_fd);
@@ -292,12 +297,64 @@ gst_dri2context_delete (GstDRI2Context * dcontext)
   XFree (dcontext->driver);
   XFree (dcontext->device);
 
-  g_free (dcontext);
+  g_slice_free (GstDRI2Context, dcontext);
 }
 
 /*
  * GstDRI2Window
  */
+
+GType _gst_dri2window_type = 0;
+
+GST_DEFINE_MINI_OBJECT_TYPE (GstDRI2Window, gst_dri2window);
+
+#if 0
+/*FIXME Check how that works*/
+static void
+_priv_gst_dri2window_initialize (void)
+{
+  _gst_dri2window_type = gst_dri2window_get_type ();
+}
+#endif
+
+static void
+gst_dri2window_finalize (GstDRI2Window * xwindow)
+{
+  GstDRI2Context *dcontext = xwindow->dcontext;
+
+  GST_DEBUG_OBJECT (xwindow, "Finalize window");
+
+  GST_DRI2WINDOW_LOCK_POOL (xwindow);
+  xwindow->pool_valid = FALSE;
+  if (xwindow->buffer_pool) {
+    gst_object_unref (xwindow->buffer_pool);
+    xwindow->buffer_pool = NULL;
+  }
+  GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
+
+  g_mutex_clear (&xwindow->pool_lock);
+
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
+
+  DRI2DestroyDrawable (dcontext->x_display, xwindow->window);
+  /* If we did not create the window we just free the GC and let it live */
+  if (xwindow->internal)
+    XDestroyWindow (dcontext->x_display, xwindow->window);
+  else
+    XSelectInput (dcontext->x_display, xwindow->window, 0);
+
+  XFreeGC (dcontext->x_display, xwindow->gc);
+  XSync (dcontext->x_display, FALSE);
+
+  /* XXX free xwindow->dri2bufs
+   * TODO we probably want xwindow to be a refcnt'd miniobj so we don't end w/
+   * dri2buffer's referencing deleted xwindow's..
+   */
+
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
+
+  gst_dri2context_delete (dcontext);
+}
 
 /* NOTES:
  * at startup (or on first buffer allocation?) request front buffer..
@@ -316,15 +373,20 @@ gst_dri2window_new_from_handle (GstDRI2Context * dcontext, XID xwindow_id)
   GstDRI2Window *xwindow;
   XWindowAttributes attr;
 
-  xwindow = (GstDRI2Window *) gst_mini_object_new (GST_TYPE_DRI2WINDOW);
+  xwindow = g_slice_new (GstDRI2Window);
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (xwindow),
+      0, _gst_dri2window_type, NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_dri2window_finalize);
+
   xwindow->dcontext = dcontext;
   xwindow->window = xwindow_id;
-  xwindow->pool_lock = g_mutex_new ();
   xwindow->buffer_pool = NULL;
   xwindow->pool_valid = FALSE;
 
+  g_mutex_init (&xwindow->pool_lock);
+
   /* Set the event we want to receive and create a GC */
-  g_mutex_lock (dcontext->x_lock);
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
 
   XGetWindowAttributes (dcontext->x_display, xwindow->window, &attr);
 
@@ -338,7 +400,7 @@ gst_dri2window_new_from_handle (GstDRI2Context * dcontext, XID xwindow_id)
   XMapWindow (dcontext->x_display, xwindow->window);
 
   xwindow->gc = XCreateGC (dcontext->x_display, xwindow->window, 0, NULL);
-  g_mutex_unlock (dcontext->x_lock);
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
 
   DRI2CreateDrawable (dcontext->x_display, xwindow->window);
 
@@ -349,7 +411,7 @@ gst_dri2window_new_from_handle (GstDRI2Context * dcontext, XID xwindow_id)
   free (get_buffer (xwindow, DRI2BufferFrontLeft,
           xwindow->width, xwindow->height, 32));
 
-  gst_x_overlay_got_window_handle (GST_X_OVERLAY (dcontext->elem),
+  gst_video_overlay_got_window_handle (GST_VIDEO_OVERLAY (dcontext->elem),
       xwindow->window);
 
   return xwindow;
@@ -363,7 +425,7 @@ gst_dri2window_new (GstDRI2Context * dcontext, gint width, gint height)
   Atom wm_delete;
   XID xwindow_id;
 
-  g_mutex_lock (dcontext->x_lock);
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
 
   GST_DEBUG_OBJECT (dcontext->elem, "creating window: %dx%d", width, height);
 
@@ -379,7 +441,7 @@ gst_dri2window_new (GstDRI2Context * dcontext, gint width, gint height)
     (void) XSetWMProtocols (dcontext->x_display, xwindow_id, &wm_delete, 1);
   }
 
-  g_mutex_unlock (dcontext->x_lock);
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
 
   xwindow = gst_dri2window_new_from_handle (dcontext, xwindow_id);
   xwindow->internal = TRUE;
@@ -390,160 +452,150 @@ gst_dri2window_new (GstDRI2Context * dcontext, gint width, gint height)
 void
 gst_dri2window_delete (GstDRI2Window * xwindow)
 {
-  g_mutex_lock (xwindow->pool_lock);
+  GST_DRI2WINDOW_LOCK_POOL (xwindow);
   xwindow->pool_valid = FALSE;
   if (xwindow->buffer_pool) {
-    gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
+    gst_object_unref (xwindow->buffer_pool);
     xwindow->buffer_pool = NULL;
   }
-  g_mutex_unlock (xwindow->pool_lock);
+  GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
 
-  gst_mini_object_unref (GST_MINI_OBJECT (xwindow));
+  gst_dri2window_unref (GST_MINI_OBJECT (xwindow));
 }
 
-static void
-gst_dri2window_finalize (GstDRI2Window * xwindow)
-{
-  GstDRI2Context *dcontext = xwindow->dcontext;
-
-  GST_DEBUG_OBJECT (xwindow, "Finalize window");
-
-  g_mutex_lock (xwindow->pool_lock);
-  xwindow->pool_valid = FALSE;
-  if (xwindow->buffer_pool) {
-    gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
-    xwindow->buffer_pool = NULL;
-  }
-  g_mutex_unlock (xwindow->pool_lock);
-
-  g_mutex_free (xwindow->pool_lock);
-
-  g_mutex_lock (dcontext->x_lock);
-
-  DRI2DestroyDrawable (dcontext->x_display, xwindow->window);
-
-  /* If we did not create the window we just free the GC and let it live */
-  if (xwindow->internal)
-    XDestroyWindow (dcontext->x_display, xwindow->window);
-  else
-    XSelectInput (dcontext->x_display, xwindow->window, 0);
-
-  XFreeGC (dcontext->x_display, xwindow->gc);
-
-  XSync (dcontext->x_display, FALSE);
-
-  // XXX free xwindow->dri2bufs
-  // TODO we probably want xwindow to be a refcnt'd miniobj so we don't end w/
-  // dri2buffer's referencing deleted xwindow's..
-
-  g_mutex_unlock (dcontext->x_lock);
-
-  gst_dri2context_delete (dcontext);
-
-  GST_MINI_OBJECT_CLASS (dri2window_parent_class)->finalize (GST_MINI_OBJECT
-      (xwindow));
-}
-
-/* call with x_lock held */
-void
+/* call with x_lock held
+ *
+ * Returns: %TRUE if the geormetry has been updated, %FALSE otherwize */
+gboolean
 gst_dri2window_update_geometry (GstDRI2Window * xwindow)
 {
   XWindowAttributes attr;
 
   XGetWindowAttributes (xwindow->dcontext->x_display, xwindow->window, &attr);
 
-  xwindow->width = attr.width;
-  xwindow->height = attr.height;
+  if (xwindow->width != attr.width || xwindow->height != attr.height) {
+    xwindow->width = attr.width;
+    xwindow->height = attr.height;
+
+    return TRUE;
+  }
+
+  return FALSE;
 }
 
 void
 gst_dri2window_set_pool_valid (GstDRI2Window * xwindow, gboolean valid)
 {
-  g_mutex_lock (xwindow->pool_lock);
+  GST_DRI2WINDOW_LOCK_POOL (xwindow);
   xwindow->pool_valid = valid;
-  g_mutex_unlock (xwindow->pool_lock);
+  GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
 }
 
-static void
-gst_dri2window_setup_format (GstDRI2Window * xwindow, GstCaps * caps)
+gboolean
+gst_dri2window_create_pool (GstDRI2Window * xwindow, GstVideoInfo * info,
+    GstCaps * caps)
 {
   GstStructure *structure;
-  guint32 formatid;
+  GstBufferPool *newpool, *oldpool;
 
-  structure = gst_caps_get_structure (caps, 0);
-  if (gst_structure_get_fourcc (structure, "format", &formatid)) {
-    xwindow->format = gst_video_format_from_fourcc (formatid);
-  } else {
-    xwindow->format = GST_VIDEO_FORMAT_UNKNOWN;
-  }
-  if (!gst_structure_get_int (structure, "width", &xwindow->video_width)) {
-    xwindow->video_width = xwindow->width;
-  }
-  if (!gst_structure_get_int (structure, "height", &xwindow->video_height)) {
-    xwindow->video_height = xwindow->height;
-  }
-  if (!gst_structure_get_boolean (structure, "interlaced",
-          &xwindow->interlaced)) {
-    xwindow->interlaced = FALSE;
-  }
-}
-
-void
-gst_dri2window_check_caps (GstDRI2Window * xwindow, GstCaps * caps)
-{
-  g_mutex_lock (xwindow->pool_lock);
+  GST_DRI2WINDOW_LOCK_POOL (xwindow);
   if (xwindow->buffer_pool) {
-    if (!gst_drm_buffer_pool_check_caps (xwindow->buffer_pool, caps)) {
-      GST_INFO_OBJECT (xwindow->dcontext->elem, "caps change");
-      gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
-      xwindow->buffer_pool = NULL;
-    }
+    /* we don't deactivate, some elements might still be using it, it will
+     * be deactivated when the last ref is gone */
+    gst_object_unref (xwindow->buffer_pool);
   }
-  g_mutex_unlock (xwindow->pool_lock);
 
-  gst_dri2window_setup_format (xwindow, caps);
+  xwindow->info = *info;
+
+  newpool = gst_dri2_buffer_pool_new (xwindow, xwindow->dcontext->drm_fd);
+  structure = gst_buffer_pool_get_config (newpool);
+  /* FIXME DRI2 on OMAP has a 32 quantization step for strides... check if it is the right place? */
+  gst_video_info_set_format (info, info->finfo->format,
+      GET_COMPATIBLE_STRIDE (info->finfo->format, info->width), info->height);
+  gst_buffer_pool_config_set_params (structure, caps, info->size, 2, 0);
+
+  /* FIXME: Do we need to specify allocator parameters ?
+   * gst_buffer_pool_config_set_allocator (structure, NULL, &params);*/
+  if (!gst_buffer_pool_set_config (newpool, structure))
+    goto config_failed;
+
+  oldpool = xwindow->buffer_pool;
+  /* we don't activate the pool yet, this will be done by downstream after it
+   * has configured the pool. If downstream does not want our pool we will
+   * activate it when we render into it */
+  xwindow->buffer_pool = newpool;
+  GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
+
+  /* unref the old sink */
+  if (oldpool) {
+    /* we don't deactivate, some elements might still be using it, it will
+     * be deactivated when the last ref is gone */
+    gst_object_unref (oldpool);
+  }
+
+  return TRUE;
+
+config_failed:
+  {
+    GST_DEBUG_OBJECT (xwindow->dcontext->elem, "failed setting config");
+    gst_object_unref (newpool);
+
+    return FALSE;
+  }
 }
 
-static inline gboolean
+static inline GstDRI2Meta *
 ok_buffer (GstDRI2Window * xwindow, GstBuffer * buf)
 {
-  return GST_IS_DRI2_BUFFER (buf) &&
-      (GST_DRI2_BUFFER_POOL (GST_DRM_BUFFER (buf)->pool)->xwindow == xwindow);
+  GstDRI2Meta *meta;
 
+  if (buf) {
+    meta = gst_buffer_get_dri2_meta (buf);
+    if (meta && meta->xwindow == xwindow)
+      return meta;
+    else {
+      return NULL;
+    }
+  }
+
+  return NULL;
 }
 
 GstFlowReturn
 gst_dri2window_buffer_show (GstDRI2Window * xwindow, GstBuffer * buf)
 {
-  GstDRI2Context *dcontext = xwindow->dcontext;
-  GstDRI2Buffer *dri2buf;
-  GstVideoCrop *crop;
-  CARD64 count;
   BoxRec b;
+  CARD64 count;
+  GstVideoCropMeta *cropmeta;
+  GstDRI2Meta *dri2meta;
 
-  if (!ok_buffer (xwindow, buf)) {
-    GST_WARNING_OBJECT (dcontext->elem, "unexpected buffer: %p", buf);
-    return GST_FLOW_UNEXPECTED;
+  GstDRI2Context *dcontext = xwindow->dcontext;
+
+  dri2meta = ok_buffer (xwindow, buf);
+  if (!dri2meta) {
+    GST_WARNING_OBJECT (dcontext->elem, "unexpected buffer: %" GST_PTR_FORMAT,
+        buf);
+
+    return GST_FLOW_ERROR;
   }
 
-  dri2buf = GST_DRI2_BUFFER (buf);
-
-  crop = gst_buffer_get_video_crop (buf);
-  if (crop) {
-    b.x1 = gst_video_crop_left (crop);
-    b.y1 = gst_video_crop_top (crop);
-    b.x2 = b.x1 + gst_video_crop_width (crop) - 1;
-    b.y2 = b.y1 + gst_video_crop_height (crop) - 1;
+  cropmeta = gst_buffer_get_video_crop_meta (buf);
+  if (cropmeta) {
+    b.x1 = cropmeta->x;
+    b.y1 = cropmeta->y;
+    b.x2 = b.x1 + cropmeta->width - 1;
+    b.y2 = b.y1 + cropmeta->height - 1;
   } else {
     b.x1 = 0;
     b.y1 = 0;
-    b.x2 = GST_DRM_BUFFER (dri2buf)->pool->width - 1;
-    b.y2 = GST_DRM_BUFFER (dri2buf)->pool->height - 1;
+    b.x2 = GST_DRM_BUFFER_POOL (buf->pool)->info.width - 1;
+    b.y2 = GST_DRM_BUFFER_POOL (buf->pool)->info.height - 1;
   }
 
-  g_mutex_lock (dcontext->x_lock);
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
   DRI2SwapBuffersVid (dcontext->x_display, xwindow->window, 0, 0, 0,
-      &count, dri2buf->dri2buf->attachment, &b);
+      &count, dri2meta->dri2buf->attachment, &b);
+
   /* TODO: probably should wait for DRI2_BufferSwapComplete instead..
    * although that probably depends on someone making an x11 call to
    * dispatch the events
@@ -551,125 +603,133 @@ gst_dri2window_buffer_show (GstDRI2Window * xwindow, GstBuffer * buf)
   DRI2WaitSBC (dcontext->x_display, xwindow->window, count,
       /* just re-use count as a valid ptr.. we don't need ust/msc/sbc: */
       &count, &count, &count);
-  g_mutex_unlock (dcontext->x_lock);
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
 
   return GST_FLOW_OK;
 }
 
-static guint
-gst_dri2window_get_compatible_stride (GstVideoFormat format, guint width)
-{
-  guint quant = 32;
-  return (width + quant - 1) & ~(quant - 1);
-}
-
+/* Returns: transfer full */
 GstBuffer *
 gst_dri2window_buffer_prepare (GstDRI2Window * xwindow, GstBuffer * buf)
 {
+  GstVideoInfo info, *cinfo;
+  GstVideoFormat format;
+  GstVideoFrame src, dest;
+
   GstBuffer *newbuf = NULL;
+  GstBufferPoolAcquireParams params = { 0, };
+  GstElement *sink = xwindow->dcontext->elem;
 
-  if (!ok_buffer (xwindow, buf)) {
-    guint size, new_width, width, height;
-
-    /* DRI2 on OMAP has a 32 quantization step for strides, so we copy
-       the buffer into another buffer with a size that's to its liking */
-    width = xwindow->video_width;
-    height = xwindow->video_height;
-    new_width = gst_dri2window_get_compatible_stride (xwindow->format, width);
-    size = gst_video_format_get_size (xwindow->format, new_width, height);
-    gst_dri2window_buffer_alloc (xwindow, size, GST_BUFFER_CAPS (buf), &newbuf);
-
-    if (newbuf) {
-      GST_DEBUG_OBJECT (xwindow->dcontext->elem,
-          "slow-path.. I got a %s so I need to memcpy",
-          g_type_name (G_OBJECT_TYPE (buf)));
-      if (size == GST_BUFFER_SIZE (buf)) {
-        memcpy (GST_BUFFER_DATA (newbuf),
-            GST_BUFFER_DATA (buf),
-            MIN (GST_BUFFER_SIZE (newbuf), GST_BUFFER_SIZE (buf)));
-      } else {
-        GstVideoFormat format = xwindow->format;
-        guint plane, row, ww = width, wh = height;
-        guint next_base = 0;
-        guint pass, npasses;
-        guint in_interlaced_offset, out_interlaced_offset;
-
-        for (plane = 0; plane < 3; plane++) {
-          int in_base = gst_video_format_get_component_offset (format, plane,
-              ww, wh);
-          int out_base = gst_video_format_get_component_offset (format, plane,
-              new_width, wh);
-          int in_stride = gst_video_format_get_row_stride (format, plane, ww);
-          int out_stride = gst_video_format_get_row_stride (format, plane,
-              new_width);
-          int bytes = gst_video_format_get_component_width (format, plane, ww)
-              * gst_video_format_get_pixel_stride (format, plane);
-          int cheight = gst_video_format_get_component_height (format, plane,
-              wh);
-          if (in_stride == 0) {
-            break;
-          }
-
-          if (xwindow->interlaced) {
-            out_stride *= 2;
-            cheight /= 2;
-            npasses = 2;
-          } else {
-            npasses = 1;
-          }
-          in_interlaced_offset = 0;
-          out_interlaced_offset = 0;
-
-          if (in_base >= next_base) {
-            for (pass = 0; pass < npasses; pass++) {
-              for (row = 0; row < cheight; row++) {
-                void *in = GST_BUFFER_DATA (buf) + in_base +
-                    in_interlaced_offset + in_stride * row;
-                void *out = GST_BUFFER_DATA (newbuf) + out_base +
-                    out_interlaced_offset + out_stride * row;
-                memcpy (out, in, bytes);
-              }
-              if (xwindow->interlaced) {
-                in_interlaced_offset = in_stride * cheight;
-                out_interlaced_offset = out_stride / 2;
-              }
-            }
-          }
-          next_base = in_base + in_stride * cheight * npasses;
-        }
-      }
-    }
+  if (ok_buffer (xwindow, buf)) {
+    GST_DEBUG_OBJECT (sink, "Buffer %" GST_PTR_FORMAT " is OK, using it", buf);
+    return gst_buffer_ref (buf);
   }
 
+  GST_LOG_OBJECT (sink, "Got a wrong buffer, make our own");
+  /* DRI2 on OMAP has a 32 quantization step for strides, so we copy
+     the buffer into another buffer with a size that's to its liking */
+  format = xwindow->info.finfo->format;
+  cinfo = &xwindow->info;
+  gst_video_info_set_format (&info, format, GET_COMPATIBLE_STRIDE (format,
+          cinfo->width), cinfo->height);
+
+  /* we should have a pool, configured in setcaps */
+  if (xwindow->buffer_pool == NULL)
+    goto no_pool;
+
+  /* Else we have to copy the data into our private image, */
+  /* if we have one... */
+  GST_LOG_OBJECT (xwindow, "buffer %p not from our pool, copying", buf);
+
+  /* we should have a pool, configured in setcaps */
+  if (xwindow->buffer_pool == NULL)
+    goto no_pool;
+
+  if (!gst_buffer_pool_set_active (xwindow->buffer_pool, TRUE))
+    goto activate_failed;
+
+  /* take a buffer from our pool, if there is no buffer in the pool something
+   * is seriously wrong, waiting for the pool here might deadlock when we try
+   * to go to PAUSED because we never flush the pool then. */
+  params.flags = GST_BUFFER_POOL_ACQUIRE_FLAG_DONTWAIT;
+  if (gst_buffer_pool_acquire_buffer (xwindow->buffer_pool,
+          &newbuf, &params) != GST_FLOW_OK)
+    goto no_buffer;
+
+  GST_CAT_LOG_OBJECT (GST_CAT_PERFORMANCE, xwindow,
+      "slow copy into bufferpool buffer %p", newbuf);
+
+  if (!gst_video_frame_map (&src, &xwindow->info, buf, GST_MAP_READ))
+    goto invalid_buffer;
+
+  if (!gst_video_frame_map (&dest, &xwindow->info, newbuf, GST_MAP_WRITE)) {
+    gst_video_frame_unmap (&src);
+    goto invalid_buffer;
+  }
+
+  gst_video_frame_copy (&dest, &src);
+
+  gst_video_frame_unmap (&dest);
+  gst_video_frame_unmap (&src);
+
   return newbuf;
+
+  /* ERRORS */
+no_pool:
+  {
+    GST_ELEMENT_ERROR (sink, RESOURCE, WRITE,
+        ("Internal error: can't allocate images"),
+        ("We don't have a bufferpool negotiated"));
+    return NULL;
+  }
+no_buffer:
+  {
+    /* No image available. That's very bad ! */
+    GST_WARNING_OBJECT (sink, "could not create image");
+    return NULL;
+  }
+invalid_buffer:
+  {
+    /* No Window available to put our image into */
+    GST_WARNING_OBJECT (sink, "could not map image");
+    return NULL;
+  }
+activate_failed:
+  {
+    GST_ERROR_OBJECT (sink, "failed to activate bufferpool.");
+    return NULL;
+  }
 }
 
+#if 0
+/* FIXME Check if we somehow need that! */
 GstFlowReturn
 gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
     GstCaps * caps, GstBuffer ** buf)
 {
   GstDRI2Context *dcontext = xwindow->dcontext;
   GstFlowReturn ret = GST_FLOW_ERROR;
-  guint width, dri2_good_width, dri2_good_size;
+  guint dri2_good_width, dri2_good_size;
 
   *buf = NULL;
 
   /* If we'll have to memcpy to match stride, just give away
      a normal buffer */
-  width = xwindow->video_width;
-  dri2_good_width =
-      gst_dri2window_get_compatible_stride (xwindow->format, width);
-  dri2_good_size = gst_video_format_get_size (xwindow->format,
-      dri2_good_width, xwindow->video_height);
+  dri2_good_width = gst_dri2window_get_compatible_stride (xwindow->format,
+      xwindow->video_width);
+  dri2_good_size = gst_video_format_get_size (xwindow->format, dri2_good_width,
+      xwindow->video_height);
+
   if (dri2_good_size != size) {
-    GstBuffer *buffer = gst_buffer_new_and_alloc (size);
+    GstBuffer *buffer = gst_buffer_new_allocate (NULL, size, NULL);
     gst_buffer_set_caps (buffer, caps);
     *buf = buffer;
     GST_WARNING_OBJECT (dcontext->elem, "Creating normal buffer, will memcpy");
     return GST_FLOW_OK;
   }
 
-  g_mutex_lock (xwindow->pool_lock);
+  GST_DRI2WINDOW_LOCK_POOL (xwindow);
+
 #if 0
   /* double check if we need this.. if we do, we probably need to
    * move pool_valid back to dri2videosink itself, because the
@@ -678,14 +738,14 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
   if (G_UNLIKELY (!xwindow->pool_valid)) {
     GST_DEBUG_OBJECT (dcontext->elem, "the pool is flushing");
     ret = GST_FLOW_WRONG_STATE;
-    g_mutex_unlock (xwindow->pool_lock);
+    GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
     goto beach;
   }
 #endif
 
   /* initialize the buffer pool if not initialized yet */
   if (G_UNLIKELY (!xwindow->buffer_pool ||
-          gst_drm_buffer_pool_size (xwindow->buffer_pool) != size)) {
+          gst_buffer_pool_get_size (xwindow->buffer_pool) != size)) {
 
     if (xwindow->buffer_pool) {
       GST_INFO_OBJECT (dcontext->elem, "size change");
@@ -709,9 +769,10 @@ gst_dri2window_buffer_alloc (GstDRI2Window * xwindow, guint size,
     ret = GST_FLOW_OK;
 
 beach:
-  g_mutex_unlock (xwindow->pool_lock);
+  GST_DRI2WINDOW_UNLOCK_POOL (xwindow);
   return ret;
 }
+#endif
 
 /*
  * These are used by the bufferpool to allocate buffers.. the bufferpool
@@ -726,14 +787,17 @@ static DRI2Buffer *
 get_buffer (GstDRI2Window * xwindow, guint attach, gint width, gint height,
     guint32 format)
 {
-  GstDRI2Context *dcontext = xwindow->dcontext;
   int nbufs = 1;
-  unsigned attachments[] = { attach, format };
   DRI2Buffer *dri2buf;
-  g_mutex_lock (dcontext->x_lock);
+  GstDRI2Context *dcontext = xwindow->dcontext;
+  unsigned attachments[] = { attach, format };
+
+  GST_DRI2CONTEXT_LOCK_X (dcontext);
   dri2buf = DRI2GetBuffersVid (dcontext->x_display, xwindow->window,
       width, height, attachments, nbufs, &nbufs);
-  g_mutex_unlock (dcontext->x_lock);
+  GST_DRI2CONTEXT_UNLOCK_X (dcontext);
+
+
   GST_DEBUG_OBJECT (dcontext->elem, "got %d buffer(s)", nbufs);
   if (nbufs != 1) {
     free (dri2buf);
@@ -773,32 +837,4 @@ gst_dri2window_free_dri2buffer (GstDRI2Window * xwindow, DRI2Buffer * dri2buf)
   get_buffer (xwindow, dri2buf->attachment, 0, 0, 0);
   free (xwindow->dri2bufs[idx]);
   xwindow->dri2bufs[idx] = NULL;
-}
-
-static void
-gst_dri2window_class_init (gpointer g_class, gpointer class_data)
-{
-  GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (g_class);
-
-  dri2window_parent_class = g_type_class_peek_parent (g_class);
-
-  mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
-      GST_DEBUG_FUNCPTR (gst_dri2window_finalize);
-}
-
-GType
-gst_dri2window_get_type (void)
-{
-  static GType type;
-
-  if (G_UNLIKELY (type == 0)) {
-    static const GTypeInfo info = {
-      .class_size = sizeof (GstMiniObjectClass),
-      .class_init = gst_dri2window_class_init,
-      .instance_size = sizeof (GstDRI2Window),
-    };
-    type = g_type_register_static (GST_TYPE_MINI_OBJECT,
-        "GstDRI2Window", &info, 0);
-  }
-  return type;
 }

@@ -26,21 +26,19 @@
 #ifndef __GST_DRI2VIDEOSINK_H__
 #define __GST_DRI2VIDEOSINK_H__
 
-#include <gst/video/video-crop.h>
 #include <gst/video/gstvideosink.h>
 
 #include "gstdri2util.h"
 
 G_BEGIN_DECLS
-#define GST_TYPE_DRI2VIDEOSINK (gst_dri2videosink_get_type())
-#define GST_DRI2VIDEOSINK(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_DRI2VIDEOSINK, GstDRI2VideoSink))
-#define GST_DRI2VIDEOSINK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_DRI2VIDEOSINK, GstDRI2VideoSinkClass))
-#define GST_IS_DRI2VIDEOSINK(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_DRI2VIDEOSINK))
-#define GST_IS_DRI2VIDEOSINK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_DRI2VIDEOSINK))
+#define GST_TYPE_DRI2VIDEOSINK            (gst_dri2videosink_get_type())
+#define GST_DRI2VIDEOSINK(obj)            (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_DRI2VIDEOSINK, GstDRI2VideoSink))
+#define GST_DRI2VIDEOSINK_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_DRI2VIDEOSINK, GstDRI2VideoSinkClass))
+#define GST_IS_DRI2VIDEOSINK(obj)         (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_DRI2VIDEOSINK))
+#define GST_IS_DRI2VIDEOSINK_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_DRI2VIDEOSINK))
+
+#define GST_DRI2VIDEOSINK_LOCK_FLOW(obj)  (g_mutex_lock (&GST_DRI2VIDEOSINK(obj)->flow_lock))
+#define GST_DRI2VIDEOSINK_UNLOCK_FLOW(obj)(g_mutex_unlock (&GST_DRI2VIDEOSINK(obj)->flow_lock))
 
 typedef struct _GstDRI2VideoSink GstDRI2VideoSink;
 typedef struct _GstDRI2VideoSinkClass GstDRI2VideoSinkClass;
@@ -52,17 +50,12 @@ struct _GstDRI2VideoSink
 
   gboolean running;
 
-  /* Framerate numerator and denominator */
-  gint fps_n, fps_d;
   /* size of incoming video */
   guint video_width, video_height;
 
-  GstVideoFormat format;
-  gint rowstride;
-  gboolean interlaced;
-
+  GstVideoInfo info;
   GThread *event_thread;
-  GMutex *flow_lock;
+  GMutex flow_lock;
 
   gboolean keep_aspect;
 
@@ -72,7 +65,6 @@ struct _GstDRI2VideoSink
 
   GstVideoRectangle render_rect;
   gboolean have_render_rect;
-  GstVideoCrop *crop_rect;
 
   GValue *display_par;
   gint video_par_n;

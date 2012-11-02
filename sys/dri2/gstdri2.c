@@ -51,6 +51,6 @@ plugin_init (GstPlugin * plugin)
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    "dri2",
+    dri2,
     "DRI2 based plugin",
     plugin_init, VERSION, "LGPL", "GStreamer", "http://gstreamer.net/")

@@ -29,7 +29,7 @@
 
 #include <string.h>
 
-#include <ext/dma/gstdmabufmeta.h>
+#include <sys/dma/gstdmabufmeta.h>
 
 #include "gstdrmbufferpool.h"
 #include "gstdrmmeta.h"
@@ -126,24 +126,32 @@ wrong_caps:
 }
 
 static GstFlowReturn
-gst_drm_buffer_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** bufer,
-    GstBufferPoolAcquireParams * paramts)
+gst_drm_buffer_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** buffer,
+    GstBufferPoolAcquireParams * params)
 {
   GstDRMBufferPool *self = (GstDRMBufferPool *) pool;
   GstVideoInfo *info;
   GstBuffer *res;
-  GstDRMMeta *meta;
+  GstDRMMeta *meta = NULL;
 
   info = &self->info;
 
-  res = gst_buffer_new ();
+  if (*buffer && GST_IS_BUFFER (*buffer)) {
+    res = *buffer;
+    meta = gst_buffer_get_drm_meta (*buffer);
+  } else
+    res = gst_buffer_new ();
 
-  /* Add DRM Meta (i.e. allocation) */
-  meta = gst_buffer_add_drm_meta (res, pool, NULL);
   if (!meta) {
-    gst_buffer_unref (res);
-    goto no_buffer;
-  }
+    /* Add DRM Meta (i.e. allocation) */
+    GST_DEBUG_OBJECT (pool, "Adding drm meta");
+    meta = gst_buffer_add_drm_meta (res, pool, NULL);
+    if (!meta) {
+      gst_buffer_unref (res);
+      goto no_buffer;
+    }
+  } else
+    GST_DEBUG_OBJECT (pool, "Using already present drm meta");
 
   /* Add DMABuf meta */
   if (!gst_buffer_add_dma_buf_meta (res, omap_bo_dmabuf (meta->bo)))
@@ -156,7 +164,7 @@ gst_drm_buffer_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** bufer,
       GST_VIDEO_INFO_FORMAT (info),
       GST_VIDEO_INFO_WIDTH (info), GST_VIDEO_INFO_HEIGHT (info));
 
-  *bufer = res;
+  *buffer = res;
 
   return GST_FLOW_OK;
 

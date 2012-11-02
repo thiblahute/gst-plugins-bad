@@ -59,35 +59,34 @@ struct _GstDRI2BufferPoolClass {
 
 GType gst_dri2_buffer_pool_get_type (void);
 
-GstDRI2BufferPool * gst_dri2_buffer_pool_new (GstDRI2Window * xwindow,
-    int fd, GstCaps * caps, guint size);
-void gst_dri2_buffer_pool_destroy (GstDRI2BufferPool * self);
+GstBufferPool * gst_dri2_buffer_pool_new (GstDRI2Window * xwindow,
+                                          int fd);
+void gst_dri2_buffer_pool_destroy        (GstDRI2BufferPool * self);
 
 /*
- * GstDRI2Buffer:
+ * GstDRI2Meta:
  */
 
-#define GST_TYPE_DRI2_BUFFER (gst_dri2_buffer_get_type())
-#define GST_IS_DRI2_BUFFER(obj) (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_DRI2_BUFFER))
-#define GST_DRI2_BUFFER(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_DRI2_BUFFER, GstDRI2Buffer))
+#define GST_DRI2_META_API_TYPE (gst_dri2_meta_api_get_type())
+#define GST_DRI2_META_INFO  (gst_dri2_meta_get_info())
 
-typedef struct _GstDRI2Buffer GstDRI2Buffer;
-typedef struct _GstDRI2BufferClass GstDRI2BufferClass;
+typedef struct _GstDRI2Meta GstDRI2Meta;
 
-struct _GstDRI2Buffer {
-  GstDRMBuffer parent;
+struct _GstDRI2Meta {
+  GstMeta parent;
 
   DRI2Buffer *dri2buf;
-};
 
-struct _GstDRI2BufferClass {
-  GstDRMBufferClass klass;
-
+  GstDRI2Window *xwindow;
+  /* FIXME Do we need that? */
   guint width, height;
   guint32 format;
 };
 
-GType gst_dri2_buffer_get_type (void);
+GType gst_dri2_meta_api_get_type (void);
+const GstMetaInfo * gst_dri2_meta_get_info (void);
+
+#define gst_buffer_get_dri2_meta(b) ((GstDRI2Meta*)gst_buffer_get_meta((b),GST_DRI2_META_API_TYPE))
 
 G_END_DECLS
 

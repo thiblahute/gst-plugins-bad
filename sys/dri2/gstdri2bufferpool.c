@@ -29,83 +29,90 @@
 
 #include "gstdri2bufferpool.h"
 
+#include <sys/drm/gstdrmmeta.h>
+
 /*
  * GstDRI2BufferPool:
  */
 
-static GstMiniObjectClass *gst_dri2bufferpool_parent_class = NULL;
-
+#define gst_dri2_buffer_pool_parent_class parent_class
 G_DEFINE_TYPE (GstDRI2BufferPool, gst_dri2_buffer_pool,
     GST_TYPE_DRM_BUFFER_POOL);
 
-GstDRI2BufferPool *
-gst_dri2_buffer_pool_new (GstDRI2Window * xwindow,
-    int fd, GstCaps * caps, guint size)
+GstBufferPool *
+gst_dri2_buffer_pool_new (GstDRI2Window * xwindow, int fd)
 {
   GstDRI2BufferPool *self = (GstDRI2BufferPool *)
-      gst_mini_object_new (GST_TYPE_DRI2_BUFFER_POOL);
+      g_object_new (GST_TYPE_DRI2_BUFFER_POOL, NULL);
 
   gst_drm_buffer_pool_initialize (GST_DRM_BUFFER_POOL (self),
-      xwindow->dcontext->elem, fd, caps, size);
+      xwindow->dcontext->elem, fd);
 
-  gst_mini_object_ref (GST_MINI_OBJECT (xwindow));
-  self->xwindow = xwindow;
+  self->xwindow =
+      (GstDRI2Window *) gst_mini_object_ref (GST_MINI_OBJECT (xwindow));
 
-  return self;
+  return GST_BUFFER_POOL (self);
 }
 
-static GstDRMBuffer *
-gst_dri2_buffer_alloc (GstDRMBufferPool * pool)
+static GstFlowReturn
+gst_dri2_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** buffer,
+    GstBufferPoolAcquireParams * params)
 {
-  GstDRI2BufferPool *dri2pool = GST_DRI2_BUFFER_POOL (pool);
-  GstDRI2Buffer *self = (GstDRI2Buffer *)
-      gst_mini_object_new (GST_TYPE_DRI2_BUFFER);
   struct omap_bo *bo;
+  GstDRI2Meta *dri2meta;
 
-  gst_mini_object_ref (GST_MINI_OBJECT (pool));
+  GstVideoInfo *info = &GST_DRM_BUFFER_POOL (pool)->info;
+  GstDRI2BufferPool *dri2pool = GST_DRI2_BUFFER_POOL (pool);
+
+  *buffer = gst_buffer_new ();
+  dri2meta = (GstDRI2Meta *) gst_buffer_add_meta (*buffer, GST_DRI2_META_INFO,
+      NULL);
+
+  if (!dri2meta) {
+    gst_buffer_unref (*buffer);
+    GST_WARNING_OBJECT (pool, "Could not add DRI2 meta");
+
+    return GST_FLOW_ERROR;
+  }
 
   GST_DEBUG_OBJECT (pool, "Allocating new buffer");
-  self->dri2buf = gst_dri2window_get_dri2buffer (dri2pool->xwindow,
-      pool->width, pool->height, pool->fourcc);
+  dri2meta->dri2buf = gst_dri2window_get_dri2buffer (dri2pool->xwindow,
+      info->width, info->height,
+      gst_video_format_to_fourcc (info->finfo->format));
+  dri2meta->xwindow = gst_dri2window_ref (dri2pool->xwindow);
 
   /* we can't really properly support multi-planar w/ separate buffers
    * in gst0.10..  we need a way to indicate this to the server!
    */
-  g_warn_if_fail (self->dri2buf->names[1] == 0);
+  g_warn_if_fail (dri2meta->dri2buf->names[1] == 0);
 
-  bo = omap_bo_from_name (pool->dev, self->dri2buf->names[0]);
-  gst_drm_buffer_initialize (GST_DRM_BUFFER (self), pool, bo);
+  bo = omap_bo_from_name (GST_DRM_BUFFER_POOL (pool)->dev,
+      dri2meta->dri2buf->names[0]);
+  gst_buffer_add_drm_meta (*buffer, pool, bo);
 
-  return GST_DRM_BUFFER (self);
+  /* We chain up to parent class */
+  return GST_BUFFER_POOL_CLASS (parent_class)->alloc_buffer (pool, buffer,
+      params);
 }
 
 static void
-gst_dri2_buffer_cleanup (GstDRMBufferPool * pool, GstDRMBuffer * buf)
+gst_dri2_buffer_pool_finalize (GObject * object)
 {
-  gst_dri2window_free_dri2buffer (GST_DRI2_BUFFER_POOL (pool)->xwindow,
-      GST_DRI2_BUFFER (buf)->dri2buf);
-  gst_mini_object_unref (GST_MINI_OBJECT (pool));
-}
+  gst_dri2window_unref (GST_DRI2_BUFFER_POOL (object)->xwindow);
 
-static void
-gst_dri2_buffer_pool_finalize (GstDRMBufferPool * pool)
-{
-  gst_mini_object_unref (GST_MINI_OBJECT (GST_DRI2_BUFFER_POOL
-          (pool)->xwindow));
-  GST_MINI_OBJECT_CLASS (gst_dri2bufferpool_parent_class)->finalize
-      (GST_MINI_OBJECT (pool));
+  G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static void
 gst_dri2_buffer_pool_class_init (GstDRI2BufferPoolClass * klass)
 {
-  GST_DRM_BUFFER_POOL_CLASS (klass)->buffer_alloc =
-      GST_DEBUG_FUNCPTR (gst_dri2_buffer_alloc);
-  GST_DRM_BUFFER_POOL_CLASS (klass)->buffer_cleanup =
-      GST_DEBUG_FUNCPTR (gst_dri2_buffer_cleanup);
-  GST_MINI_OBJECT_CLASS (klass)->finalize = (GstMiniObjectFinalizeFunction)
-      GST_DEBUG_FUNCPTR (gst_dri2_buffer_pool_finalize);
-  gst_dri2bufferpool_parent_class = g_type_class_peek_parent (klass);
+  GObjectClass *gobject_class = (GObjectClass *) klass;
+  GstBufferPoolClass *gstbufferpool_class = (GstBufferPoolClass *) klass;
+
+  gobject_class->finalize = GST_DEBUG_FUNCPTR (gst_dri2_buffer_pool_finalize);
+
+  gstbufferpool_class->alloc_buffer =
+      GST_DEBUG_FUNCPTR (gst_dri2_pool_alloc_buffer);
 }
 
 static void
@@ -114,18 +121,40 @@ gst_dri2_buffer_pool_init (GstDRI2BufferPool * self)
 }
 
 /*
- * GstDRI2Buffer:
+ * GstDRI2Meta:
  */
 
-
-G_DEFINE_TYPE (GstDRI2Buffer, gst_dri2_buffer, GST_TYPE_DRM_BUFFER);
-
 static void
-gst_dri2_buffer_class_init (GstDRI2BufferClass * klass)
+gst_dri2_meta_free (GstDRI2Meta * meta, GstBuffer * buf)
 {
+  gst_dri2window_free_dri2buffer (meta->xwindow, meta->dri2buf);
+  gst_dri2window_unref (meta->xwindow);
+
+  return;
 }
 
-static void
-gst_dri2_buffer_init (GstDRI2Buffer * buffer)
+GType
+gst_dri2_meta_api_get_type (void)
 {
+  static volatile GType type;
+  static const gchar *tags[] = {
+    NULL
+  };
+  if (g_once_init_enter (&type)) {
+    GType _type = gst_meta_api_type_register ("GstDRI2MetaAPI", tags);
+    g_once_init_leave (&type, _type);
+  }
+  return type;
+}
+
+const GstMetaInfo *
+gst_dri2_meta_get_info (void)
+{
+  static const GstMetaInfo *dri2_meta_info = NULL;
+
+  if (dri2_meta_info == NULL) {
+    dri2_meta_info = gst_meta_register (GST_DRI2_META_API_TYPE, "GstDRI2Meta", sizeof (GstDRI2Meta), NULL,      /* No init needed */
+        (GstMetaFreeFunction) gst_dri2_meta_free, NULL);
+  }
+  return dri2_meta_info;
 }

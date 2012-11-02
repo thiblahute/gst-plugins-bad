@@ -1109,6 +1109,16 @@ AG_GST_CHECK_FEATURE(KATE, [Kate], kate, [
   AC_SUBST(TIGER_LIBS)
 ],,,[AM_CONDITIONAL(USE_TIGER, false)])
 
+
+dnl *** dri2 ***
+translit(dnm, m, l) AM_CONDITIONAL(USE_DRI2, true)
+AG_GST_CHECK_FEATURE(DRI2, [dri2videosink], dri2, [
+  AG_GST_PKG_CHECK_MODULES(GST_VIDEO, gstreamer-video-$GST_API_VERSION)
+  PKG_CHECK_MODULES([DRI2], [dri2 libdrm libdrm_omap], HAVE_DRI2=yes, HAVE_DRI2=no)
+  AC_SUBST(DRM_CFLAGS)
+  AC_SUBST(DRM_LIBS)
+])
+
 dnl *** ladspa ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_LADSPA, true)
 AG_GST_CHECK_FEATURE(LADSPA, [ladspa], ladspa, [
@@ -1845,6 +1855,11 @@ AG_GST_CHECK_FEATURE(GSETTINGS, [GSettings plugin], gsettings, [
   fi
 ])
 
+dnl *** drm ***
+HAVE_DRM=NO
+PKG_CHECK_MODULES([DRM], [libdrm, libdrm_omap], HAVE_DRM=yes, HAVE_DRM=no)
+AM_CONDITIONAL(HAVE_DRM, test "x$HAVE_DRM" = "xyes")
+
 dnl *** sndio ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_SNDIO, true)
 AG_GST_CHECK_FEATURE(SNDIO, [sndio audio], sndio, [
@@ -2087,6 +2102,9 @@ gst-libs/gst/interfaces/Makefile
 gst-libs/gst/signalprocessor/Makefile
 gst-libs/gst/codecparsers/Makefile
 gst-libs/gst/video/Makefile
+gst-libs/sys/Makefile
+gst-libs/sys/drm/Makefile
+gst-libs/sys/dma/Makefile
 sys/Makefile
 sys/dshowdecwrapper/Makefile
 sys/acmenc/Makefile
@@ -2100,6 +2118,7 @@ sys/directdraw/Makefile
 sys/directsound/Makefile
 sys/dshowsrcwrapper/Makefile
 sys/dshowvideosink/Makefile
+sys/dri2/Makefile
 sys/dvb/Makefile
 sys/fbdev/Makefile
 sys/linsys/Makefile
@@ -2198,6 +2217,10 @@ pkgconfig/gstreamer-codecparsers.pc
 pkgconfig/gstreamer-codecparsers-uninstalled.pc
 pkgconfig/gstreamer-basevideo.pc
 pkgconfig/gstreamer-basevideo-uninstalled.pc
+pkgconfig/gstreamer-dmabuf.pc
+pkgconfig/gstreamer-dmabuf-uninstalled.pc
+pkgconfig/gstreamer-drm.pc
+pkgconfig/gstreamer-drm-uninstalled.pc
 tools/Makefile
 m4/Makefile
 win32/common/config.h
