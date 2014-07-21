@@ -428,10 +428,10 @@ gst_hls_demux_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
         return FALSE;
       }
 
-      if ((rate > 1.0 || rate < -1.0) && (!demux->client->main
+      if (rate < -1.0 && (!demux->client->main
               || !demux->client->main->iframe_lists)) {
         GST_ERROR_OBJECT (demux,
-            "Trick modes only allowed for streams with I-frame lists");
+            "Reverse playback only allowed for streams with I-frame lists");
         gst_event_unref (event);
         return FALSE;
       }
@@ -464,7 +464,7 @@ gst_hls_demux_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
       }
 
       /* Use I-frame variants for trick modes */
-      if ((rate > 1.0 || rate < -1.0) && demux->segment.rate >= -1.0
+      if (rate < -1.0 && demux->segment.rate >= -1.0
           && demux->segment.rate <= 1.0) {
         GError *err = NULL;
 
