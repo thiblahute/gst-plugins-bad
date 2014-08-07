@@ -1239,7 +1239,8 @@ gst_hls_demux_stream_loop (GstHLSDemux * demux)
   }
 
   /* try to switch to another bitrate if needed */
-  gst_hls_demux_switch_playlist (demux);
+  if (demux->segment.rate > 0)
+    gst_hls_demux_switch_playlist (demux);
   demux->download_total_bytes = 0;
   demux->download_total_time = 0;
 
