@@ -426,7 +426,8 @@ GST_PLUGINS_NONPORTED=" cdxaparse \
  gsettings \
  musepack nas sdl timidity \
  acm wininet \
- xvid lv2 teletextdec sndio libvisual"
+ xvid teletextdec sndio libvisual"
+
 AC_SUBST(GST_PLUGINS_NONPORTED)
 
 dnl these are all the gst plug-ins, compilable without additional libs
@@ -2126,9 +2127,9 @@ AG_GST_CHECK_FEATURE(LADSPA, [ladspa], ladspa, [
 dnl *** LV2 ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_LV2, true)
 AG_GST_CHECK_FEATURE(LV2, [lv2], lv2, [
-  PKG_CHECK_MODULES(SLV2, slv2 >= 0.6.6, HAVE_LV2="yes", HAVE_LV2="no")
-  AC_SUBST(SLV2_CFLAGS)
-  AC_SUBST(SLV2_LIBS)
+  PKG_CHECK_MODULES(LILV, lilv-0 >= 0.6.6, HAVE_LV2="yes", HAVE_LV2="no")
+  AC_SUBST(LILV_CFLAGS)
+  AC_SUBST(LILV_LIBS)
 ])
 
 dnl *** libde265 ***
