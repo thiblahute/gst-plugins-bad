@@ -55,7 +55,7 @@ struct _GstDCCPClientSrc {
   gboolean closed;
 
   GstCaps *caps;
-  uint8_t ccid;
+  guint8 ccid;
 };
 
 struct _GstDCCPClientSrcClass {

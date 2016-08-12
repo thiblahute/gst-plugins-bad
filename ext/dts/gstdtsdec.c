@@ -39,7 +39,6 @@
 #endif
 
 #include <string.h>
-#include "_stdint.h"
 #include <stdlib.h>
 
 #include <gst/gst.h>
@@ -306,7 +305,7 @@ gst_dtsdec_parse (GstAudioDecoder * bdec, GstAdapter * adapter,
 }
 
 static gint
-gst_dtsdec_channels (uint32_t flags, GstAudioChannelPosition * pos)
+gst_dtsdec_channels (guint32 flags, GstAudioChannelPosition * pos)
 {
   gint chans = 0;
 

@@ -39,7 +39,6 @@
 #endif
 #endif
 #include <sys/types.h>
-#include <_stdint.h>
 #include <unistd.h>
 #include <string.h>
 

@@ -71,7 +71,7 @@ struct _GstDCCPServerSink
 
   /* properties */
   int client_sock_fd;
-  uint8_t ccid;
+  guint8 ccid;
   gboolean wait_connections;
   gboolean closed;
 };

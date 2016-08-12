@@ -35,7 +35,6 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include "_stdint.h"
 
 #include "gstfbdevsink.h"
 
@@ -114,10 +113,10 @@ gst_fbdevsink_getcaps (GstBaseSink * bsink, GstCaps * filter)
   GstFBDEVSink *fbdevsink;
   GstVideoFormat format;
   GstCaps *caps;
-  uint32_t rmask;
-  uint32_t gmask;
-  uint32_t bmask;
-  uint32_t tmask;
+  guint32 rmask;
+  guint32 gmask;
+  guint32 bmask;
+  guint32 tmask;
   int endianness, depth, bpp;
 
   fbdevsink = GST_FBDEVSINK (bsink);

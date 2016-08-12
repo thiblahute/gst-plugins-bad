@@ -80,7 +80,6 @@
 #include <gst/video/video.h>
 #include <string.h>
 #include <stdlib.h>
-#include <_stdint.h>
 #include "gstbayerorc.h"
 
 #define GST_CAT_DEFAULT gst_bayer2rgb_debug
@@ -384,8 +383,8 @@ typedef void (*process_func) (guint8 * d0, const guint8 * s0, const guint8 * s1,
     int n);
 
 static void
-gst_bayer2rgb_process (GstBayer2RGB * bayer2rgb, uint8_t * dest,
-    int dest_stride, uint8_t * src, int src_stride)
+gst_bayer2rgb_process (GstBayer2RGB * bayer2rgb, guint8 * dest,
+    int dest_stride, guint8 * src, int src_stride)
 {
   int j;
   guint8 *tmp;
@@ -458,7 +457,7 @@ gst_bayer2rgb_transform (GstBaseTransform * base, GstBuffer * inbuf,
 {
   GstBayer2RGB *filter = GST_BAYER2RGB (base);
   GstMapInfo map;
-  uint8_t *output;
+  guint8 *output;
   GstVideoFrame frame;
 
   GST_DEBUG ("transforming buffer");

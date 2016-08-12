@@ -442,9 +442,9 @@ gst_dccp_make_address_reusable (GstElement * element, int sock_fd)
  * @return TRUE if the operation was successful, FALSE otherwise.
  */
 gboolean
-gst_dccp_set_ccid (GstElement * element, int sock_fd, uint8_t ccid)
+gst_dccp_set_ccid (GstElement * element, int sock_fd, guint8 ccid)
 {
-  uint8_t ccids[4];             /* for getting the available CCIDs, should be large enough */
+  guint8 ccids[4];             /* for getting the available CCIDs, should be large enough */
   socklen_t len = sizeof (ccids);
   int i, ret;
   gboolean ccid_supported = FALSE;
@@ -494,10 +494,10 @@ gst_dccp_set_ccid (GstElement * element, int sock_fd, uint8_t ccid)
  * DCCP_SOCKOPT_TX_CCID or DCCP_SOCKOPT_RX_CCID.
  * @return ccid or -1 on error or tx_or_rx not the correct option
  */
-static uint8_t
+static guint8
 gst_dccp_get_ccid (GstElement * element, int sock_fd, int tx_or_rx)
 {
-  uint8_t ccid;
+  guint8 ccid;
   socklen_t ccidlen;
   int ret;
 

@@ -64,7 +64,7 @@ struct _GstDCCPClientSink
   int pksize;
 
   GstCaps *caps;
-  uint8_t ccid;
+  guint8 ccid;
 };
 
 struct _GstDCCPClientSinkClass
