@@ -40,6 +40,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include <gst/gst.h>
 #include <gst/audio/audio.h>

@@ -5,7 +5,7 @@ if fluidsynth_dep.found()
     'gstfluiddec.c',
     c_args : gst_plugins_bad_args,
     include_directories : [configinc],
-    dependencies : [gst_dep, fluidsynth_dep],
+    dependencies : [gst_dep, gstaudio_dep, fluidsynth_dep],
     install : true,
     install_dir : plugins_install_dir,
   )
