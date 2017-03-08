@@ -8,24 +8,22 @@ shm_sources = [
 
 shm_enabled = false
 shm_deps = []
-rt_dep = cc.find_library ('rt', required: false)
+shm_comp = component('shm')
 
-if cc.has_header ('sys/socket.h') and (host_system == 'osx' or
-    host_system == 'bsd' or rt_dep.found())
-
-  shm_enabled = true
-  shm_deps = [gstbase_dep]
-
-  if rt_dep.found()
-    shm_deps += [rt_dep]
-  endif
-  
-  gstshm = library('gstshm',
-    shm_sources,
-    c_args : gst_plugins_bad_args + ['-DSHM_PIPE_USE_GLIB'],
-    include_directories : [configinc],
-    dependencies : shm_deps,
-    install : true,
-    install_dir : plugins_install_dir,
-  )
+shm_deps = [gstbase_dep]
+libs = ['rt']
+if  (host_system == 'osx' or host_system == 'bsd')
+  libs = []
 endif
+
+rt_dep = cc.find_dependency('rt', libs: libs,
+  headers: 'sys/socket.h', required: false, components: shm_comp)
+gstshm = library('gstshm',
+  shm_sources,
+  c_args : gst_plugins_bad_args + ['-DSHM_PIPE_USE_GLIB'],
+  include_directories : [configinc],
+  dependencies : [gstbase_dep, shm_comp.dependencies()],
+  install : true,
+  install_dir : plugins_install_dir,
+  components: shm_comp
+)

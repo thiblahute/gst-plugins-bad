@@ -7,6 +7,7 @@ openjpeg_sources = [
 openjpeg_cargs = []
 
 # Check for 2.2, 2.1, then 2.0
+openjpeg_comp = component('openjpeg')
 openjpeg_dep = dependency('libopenjp2', version : '>=2.2', required : false)
 if openjpeg_dep.found()
   openjpeg_cargs += ['-DHAVE_OPENJPEG_2_2', '-DHAVE_OPENJPEG_2_1']
@@ -23,16 +24,15 @@ else
     endif
   endif
 endif
-
-if openjpeg_dep.found()
-  gstopenjpeg = library('gstopenjpeg',
-    openjpeg_sources,
-    c_args : gst_plugins_bad_args + openjpeg_cargs,
-    link_args : noseh_link_args,
-    include_directories : [configinc],
-    dependencies : [gst_dep, gstvideo_dep, openjpeg_dep,
-		    gstcodecparsers_dep],
-    install : true,
-    install_dir : plugins_install_dir,
-  )
-endif
+openjpeg_comp.add_dependencies(openjpeg_dep)
+gstopenjpeg = library('gstopenjpeg',
+  openjpeg_sources,
+  c_args : gst_plugins_bad_args + openjpeg_cargs,
+  link_args : noseh_link_args,
+  include_directories : [configinc],
+  dependencies : [gst_dep, gstvideo_dep, openjpeg_comp.dependencies(),
+          gstcodecparsers_dep],
+  install : true,
+  install_dir : plugins_install_dir,
+  components: openjpeg_comp
+)

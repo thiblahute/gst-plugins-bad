@@ -610,21 +610,22 @@ endif
 # TODO: Add rest of gl config here.
 # iOS, OS X, win32 specific support
 
-build_gstgl = true
+gl_dependencies = gl_lib_deps + gl_platform_deps + gl_winsys_deps
 if enabled_gl_apis.length() == 0
-  message('No OpenGL API libraries found or requested')
-  build_gstgl = false
+  gl_dependencies += dependency('No OpenGL API libraries found or requested',
+    components: gl_lib_comp, required: false)
 endif
 if enabled_gl_platforms.length() == 0
-  message('No OpenGL Platforms found or requested')
-  build_gstgl = false
-endif
-if enabled_gl_winsys.length() == 0
-  message('No OpenGL Window systems found or requested')
-  build_gstgl = false
+  gl_dependencies += dependency('No OpenGL Platforms found or requested',
+    components: gl_lib_comp, required: false)
 endif
 
-if build_gstgl
+if enabled_gl_winsys.length() == 0
+  gl_dependencies += dependency('No OpenGL Window systems found or requested',
+    components: gl_lib_comp, required: false)
+endif
+
+if gl_lib_comp.enabled()
   # find some types that may or may not be defined
   if cc.has_type('GLeglImageOES', prefix : gl_include_block, dependencies : gl_lib_deps)
     glconf.set('GST_GL_HAVE_GLEGLIMAGEOES', 1)

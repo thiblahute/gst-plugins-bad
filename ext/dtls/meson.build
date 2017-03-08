@@ -11,15 +11,16 @@ dtls_sources = [
   'plugin.c',
 ]
 
-libcrypto_dep = dependency('libcrypto', required : false)
+dtls_comp = component('dtls', dependencies: openssl_dep)
+dtls_dep = dependency('libcrypto', required : false,
+    components: dtls_comp)
 
-if openssl_dep.found() and libcrypto_dep.found()
-  gstdtls = library('gstdtls',
-    dtls_sources,
-    c_args : gst_plugins_bad_args,
-    include_directories : [configinc],
-    dependencies : [gst_dep, libcrypto_dep, openssl_dep],
-    install : true,
-    install_dir : plugins_install_dir,
-  )
-endif
+gstdtls = library('gstdtls',
+  dtls_sources,
+  c_args : gst_plugins_bad_args,
+  include_directories : [configinc],
+  dependencies : [gst_dep, dtls_comp.dependencies()],
+  install : true,
+  install_dir : plugins_install_dir,
+  components: dtls_comp
+)

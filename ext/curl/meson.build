@@ -12,15 +12,16 @@ curl_sources = [
   'gstcurlqueue.c',
 ]
 
-curl_dep = dependency('libcurl', version : '>= 7.35.0', required : false)
+curl_comp = component('curl')
+curl_dep = dependency('libcurl', version : '>= 7.35.0', required : false,
+  components: curl_comp)
 
-if curl_dep.found()
-  gstcurl = library('gstcurl',
-    curl_sources,
-    c_args : gst_plugins_bad_args,
-    include_directories : [configinc],
-    dependencies : [gstbase_dep, curl_dep] + winsock2,
-    install : true,
-    install_dir : plugins_install_dir,
-  )
-endif
+gstcurl = library('gstcurl',
+  curl_sources,
+  c_args : gst_plugins_bad_args,
+  include_directories : [configinc],
+  dependencies : [gstbase_dep, curl_comp.dependencies()] + winsock2,
+  install : true,
+  install_dir : plugins_install_dir,
+  components: curl_comp
+)

@@ -39,29 +39,26 @@ libopencv3_headers = [
 ]
 
 gstopencv_cargs = ['-DGST_HAAR_CASCADES_DIR="@0@"']
+opencv_comp = component('opencv')
+opencv_dep = dependency('opencv', version : ['>= 2.3.0', '<= 3.2.0'], required : false,
+  components: opencv_comp)
 
-opencv_dep = dependency('opencv', version : ['>= 2.3.0', '<= 3.3.0'], required : false)
-opencv_found = opencv_dep.found()
-
-if opencv_found
-  foreach h : libopencv2_headers
-    if not cxx.has_header(h)
-      message('Needed header "' + h + '" not found')
-      opencv_found = false
-    endif
-  endforeach
+if opencv_dep.found()
+  cxx.find_dependency('opencv2',
+      headers: libopencv2_headers,
+      components: opencv_comp)
 
   if opencv_dep.version() >= '3.0.0'
-    foreach h : libopencv3_headers
-      if not cxx.has_header(h)
-        message('Needed header "' + h + '" not found')
-        opencv_found = false
-      endif
-    endforeach
+    cxx.find_dependency('opencv3',
+        headers: ['opencv2/core/core_c.h', 'opencv2/core/version.hpp',
+          'opencv2/highgui/highgui_c.h', 'opencv2/imgproc/imgproc.hpp',
+          'opencv2/imgproc/imgproc_c.h', 'opencv2/objdetect/objdetect.hpp',
+          'opencv2/video/background_segm.hpp',],
+        components: opencv_comp)
   endif
 endif
 
-if opencv_found
+if opencv_comp.enabled()
   opencv_prefix = opencv_dep.get_pkgconfig_variable('prefix')
   gstopencv_cargs += ['-DOPENCV_PREFIX="' + opencv_prefix + '"']
 
@@ -83,8 +80,9 @@ if opencv_found
     cpp_args : gst_plugins_bad_args + gstopencv_cargs + [ '-DGST_USE_UNSTABLE_API' ],
     link_args : noseh_link_args,
     include_directories : [configinc],
-    dependencies : [gstbase_dep, gstvideo_dep, opencv_dep, gstopencv_dep],
+    dependencies : [gstbase_dep, gstvideo_dep, opencv_comp.dependencies(), gstopencv_dep],
     install : true,
     install_dir : plugins_install_dir,
+    components: opencv_comp
   )
 endif

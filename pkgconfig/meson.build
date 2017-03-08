@@ -34,7 +34,7 @@ pkg_libs = [
 ]
 
 # XXX: requires the meson.build to be parsed/executed after gst-libs/gl/meson.build
-if build_gstgl
+if gl_lib_comp.enabled()
   pkgconf.set('gllibdir', join_paths(meson.build_root(), gstgl.outdir()))
   pkg_libs += 'gl'
   pkgconf.set('GL_APIS', ' '.join(enabled_gl_apis))
@@ -42,7 +42,7 @@ if build_gstgl
   pkgconf.set('GL_PLATFORMS', ' '.join(enabled_gl_platforms))
 endif
 
-if use_wayland
+if wayland_comp.enabled()
     pkgconf.set('waylandlibdir', join_paths(meson.build_root(), gstwayland.outdir()))
     pkg_libs += 'wayland'
 endif

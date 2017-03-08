@@ -3,7 +3,7 @@ netsim_sources = [
 ]
 
 gstnetsim = library('gstnetsim',
-  netsim_sources,
+  sources: netsim_sources,
   c_args : gst_plugins_bad_args,
   include_directories : [configinc],
   dependencies : [gstbase_dep],

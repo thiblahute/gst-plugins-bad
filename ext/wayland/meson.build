@@ -8,7 +8,7 @@ wl_sources = [
     'wllinuxdmabuf.c'
 ]
 
-if use_wayland
+if wayland_comp.enabled()
     protocols_datadir = wl_protocol_dep.get_pkgconfig_variable('pkgdatadir')
 
     protocol_defs = [
@@ -37,8 +37,9 @@ if use_wayland
         c_args : gst_plugins_bad_args + ['-DGST_USE_UNSTABLE_API'],
         include_directories : [configinc],
         dependencies : [gst_dep, gstvideo_dep, gstwayland_dep, gstallocators_dep,
-                        wl_client_dep, wl_protocol_dep, libdrm_dep],
+                        wayland_comp.dependencies()],
         install : true,
         install_dir : plugins_install_dir,
+        components: wayland_comp
     )
 endif
