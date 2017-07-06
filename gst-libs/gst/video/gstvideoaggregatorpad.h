@@ -70,7 +70,10 @@ struct _GstVideoAggregatorPad
 
   /* < private > */
   GstVideoAggregatorPadPrivate *priv;
-  gpointer          _gst_reserved[GST_PADDING];
+  union {
+    gboolean needs_alpha;
+    gpointer          _gst_reserved[GST_PADDING];
+  } ABI;
 };
 
 /**
