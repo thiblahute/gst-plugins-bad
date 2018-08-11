@@ -38,6 +38,9 @@ GType gst_webrtc_rtp_receiver_get_type(void);
 typedef struct _GstWebRTCRTPReceiver GstWebRTCRTPReceiver;
 typedef struct _GstWebRTCRTPReceiverClass GstWebRTCRTPReceiverClass;
 
+/**
+ * GstWebRTCRTPReceiver:
+ */
 struct _GstWebRTCRTPReceiver
 {
   GstObject                          parent;

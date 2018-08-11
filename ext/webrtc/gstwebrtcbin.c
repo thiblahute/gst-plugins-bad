@@ -1235,7 +1235,7 @@ _check_if_negotiation_is_needed (GstWebRTCBin * webrtc)
   /* FIXME: emit when input caps/format changes? */
 
   /* If connection has created any RTCDataChannel's, and no m= section has
-   * been negotiated yet for data, return "true". 
+   * been negotiated yet for data, return "true".
    * FIXME */
 
   if (!webrtc->current_local_description) {
@@ -3827,7 +3827,7 @@ _set_description_task (GstWebRTCBin * webrtc, struct set_description *sd)
 
   if (sd->sdp->type == GST_WEBRTC_SDP_TYPE_ROLLBACK) {
     /* FIXME:
-     * If the mid value of an RTCRtpTransceiver was set to a non-null value 
+     * If the mid value of an RTCRtpTransceiver was set to a non-null value
      * by the RTCSessionDescription that is being rolled back, set the mid
      * value of that transceiver to null, as described by [JSEP]
      * (section 4.1.7.2.).
@@ -5164,7 +5164,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::create-offer:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @options: create-offer options
    * @promise: a #GstPromise which will contain the offer
    */
@@ -5177,7 +5177,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::create-answer:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @options: create-answer options
    * @promise: a #GstPromise which will contain the answer
    */
@@ -5190,7 +5190,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::set-local-description:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @type: the type of description being set
    * @sdp: a #GstSDPMessage description
    * @promise (allow-none): a #GstPromise to be notified when it's set
@@ -5204,7 +5204,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::set-remote-description:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @type: the type of description being set
    * @sdp: a #GstSDPMessage description
    * @promise (allow-none): a #GstPromise to be notified when it's set
@@ -5218,7 +5218,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::add-ice-candidate:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @ice-candidate: an ice candidate
    */
   gst_webrtc_bin_signals[ADD_ICE_CANDIDATE_SIGNAL] =
@@ -5229,7 +5229,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::get-stats:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @promise: a #GstPromise for the result
    *
    * The @promise will contain the result of retrieving the session statistics.
@@ -5305,7 +5305,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::on-negotiation-needed:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    */
   gst_webrtc_bin_signals[ON_NEGOTIATION_NEEDED_SIGNAL] =
       g_signal_new ("on-negotiation-needed", G_TYPE_FROM_CLASS (klass),
@@ -5314,7 +5314,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::on-ice-candidate:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @candidate: the ICE candidate
    */
   gst_webrtc_bin_signals[ON_ICE_CANDIDATE_SIGNAL] =
@@ -5324,7 +5324,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::on-new-transceiver:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @candidate: the new #GstWebRTCRTPTransceiver
    */
   gst_webrtc_bin_signals[ON_NEW_TRANSCEIVER_SIGNAL] =
@@ -5344,7 +5344,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::add-transceiver:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    * @direction: the direction of the new transceiver
    * @caps: (allow none): the codec preferences for this transceiver
    *
@@ -5359,7 +5359,7 @@ gst_webrtc_bin_class_init (GstWebRTCBinClass * klass)
 
   /**
    * GstWebRTCBin::get-transceivers:
-   * @object: the #GstWebRtcBin
+   * @object: the #webrtcbin
    *
    * Returns: a #GArray of #GstWebRTCRTPTransceivers
    */
