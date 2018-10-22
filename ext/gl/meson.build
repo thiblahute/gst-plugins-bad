@@ -34,4 +34,5 @@ if gstgl_dep.found()
     install_dir : plugins_install_dir,
   )
   pkgconfig.generate(gstopenglmixers, install_dir : plugins_pkgconfig_install_dir)
+  plugins += [gstopenglmixers]
 endif

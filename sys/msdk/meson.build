@@ -64,5 +64,6 @@ if msdk_root != ''
     )
     pkgconfig.generate(gstmsdktag, install_dir : plugins_pkgconfig_install_dir)
     have_msdk = true
+    plugins += [gstmsdktag]
   endif
 endif

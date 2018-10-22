@@ -28,6 +28,7 @@ libversion = '@0@.@1@.0'.format(soversion, curversion)
 osxversion = curversion + 1
 
 plugins_install_dir = '@0@/gstreamer-1.0'.format(get_option('libdir'))
+plugins = []
 
 cc = meson.get_compiler('c')
 cxx = meson.get_compiler('cpp')
@@ -549,3 +550,5 @@ endif
 configure_file(output : 'config.h', configuration : cdata)
 
 run_command(python3, '-c', 'import shutil; shutil.copy("hooks/pre-commit.hook", ".git/hooks/pre-commit")')
+
+subdir('docs')

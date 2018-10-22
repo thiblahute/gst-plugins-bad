@@ -34,4 +34,5 @@ if have_socket_h and have_pipe and have_socketpair
     install_dir : plugins_install_dir,
   )
   pkgconfig.generate(gstipcpipeline, install_dir : plugins_pkgconfig_install_dir)
+  plugins += [gstipcpipeline]
 endif
